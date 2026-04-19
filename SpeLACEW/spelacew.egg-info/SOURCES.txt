@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+spelacew/__init__.py
+spelacew/main.py
+spelacew.egg-info/PKG-INFO
+spelacew.egg-info/SOURCES.txt
+spelacew.egg-info/dependency_links.txt
+spelacew.egg-info/entry_points.txt
+spelacew.egg-info/requires.txt
+spelacew.egg-info/top_level.txt

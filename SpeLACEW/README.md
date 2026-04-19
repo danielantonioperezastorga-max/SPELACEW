@@ -1,0 +1,164 @@
+# 📊 DAPA – Medición interactiva de Equivalent Width (EW)
+
+Herramienta interactiva en Python para el análisis de líneas espectrales y cálculo de Equivalent Width (EW), con soporte para ajuste individual y blending de múltiples líneas.
+
+---
+
+##  Descripción
+
+Este código permite analizar espectros estelares en formato FITS junto con una lista de líneas espectrales (CSV), realizando:
+
+- Selección manual del continuo
+- Ajuste gaussiano de líneas de absorción
+- Manejo de líneas mezcladas (*blending*)
+- Cálculo de:
+  - Equivalent Width (EW)
+  - FWHM
+  - χ² reducido
+- Generación automática de:
+  - Imágenes por línea
+  - PDF con todos los ajustes
+  - CSV con resultados finales
+
+---
+
+##  Instalación
+
+Requiere Python 3 y las siguientes librerías:
+
+```bash
+pip install numpy matplotlib scipy pandas
+```
+
+---
+
+## ▶ Uso
+
+```bash
+python DAPA_save.py espectro.fits lineas.csv [width]
+```
+
+- `espectro.fits` → espectro observado  
+- `lineas.csv` → lista de líneas espectrales  
+- `width` (opcional) → ventana en Å alrededor de cada línea (default = 1.5)
+
+---
+
+##  Interfaz
+
+El programa abre una ventana interactiva con:
+
+- Espectro centrado en cada línea
+- Línea vertical verde = centro teórico
+- Cursor tipo crosshair (mouse)
+- Panel de zoom automático tras el ajuste
+
+---
+
+##  Controles
+
+### Navegación
+- `n` → siguiente línea  
+- `p` → línea anterior  
+
+### Ajuste normal
+- `k` → seleccionar puntos del continuo (2 clicks)  
+  → ejecuta automáticamente el fit  
+
+### Blending
+- `b` → activar/desactivar modo blending  
+- `d` → seleccionar región de blending (2 puntos)  
+- `g` → agregar centros de líneas  
+- `Enter` → ejecutar fit multi-gaussiano  
+
+### Otros
+- `r` → reset completo  
+- `q` → salir y guardar resultados  
+
+---
+
+##  Output
+
+Al ejecutar, se genera una carpeta:
+
+```
+ajustes_EW_<nombre_espectro>_<fecha>/
+```
+
+Contiene:
+
+###  Imágenes
+- `line_1.png`, `line_2.png`, etc.
+- Cada imagen incluye:
+  - Espectro normalizado
+  - Ajuste gaussiano
+  - Continuo
+  - Zoom de la región
+
+###  PDF
+- `resultados.pdf`
+- Contiene todas las figuras generadas durante la sesión  
+👉 Ideal para revisión o presentación
+
+###  CSV
+- `resultados.csv`
+
+Columnas:
+- wavelength
+- wave_left, wave_right
+- continuum (left/right)
+- element, species
+- ep, gf
+- EW (mÅ)
+- FWHM
+- Chi² reducido
+
+---
+
+##  Notas sobre el ajuste
+
+- El continuo se define manualmente con dos puntos.
+- El espectro se normaliza antes del ajuste.
+- El EW se calcula mediante integración numérica.
+
+---
+
+##  Consejo importante (muy clave)
+
+Si el ajuste falla o da resultados poco físicos:
+
+ **Selecciona un continuo más extendido**
+
+### ¿Por qué funciona?
+
+Cuando eliges un rango muy pequeño:
+
+- El continuo se estima mal
+- El ruido domina
+- La normalización queda incorrecta
+
+En cambio, al ampliar la región:
+
+- Se captura mejor la forma real del continuo
+- Se reduce el impacto del ruido
+- El ajuste gaussiano se vuelve más estable
+
+ En términos físicos: estás mejor aproximando el nivel base del flujo estelar.
+
+---
+
+##  Estado del proyecto
+
+- ✔ Funcional para análisis interactivo  
+- ✔ Soporte para blending  
+- ✔ Exportación completa (PNG + PDF + CSV)  
+-  Futuro:
+  - Empaquetado como `pip install`
+  - Automatización del continuo
+  - Mejoras en GUI
+
+---
+
+##  Autor
+
+Daniel Pérez
