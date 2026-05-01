@@ -10,6 +10,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 from PyAstronomy import pyasl
 import sys
+from pypdf import PdfWriter, PdfReader
+
 
 
 class EW:
@@ -42,9 +44,11 @@ class EW:
 
         #Expolracion del Espectro
         self.explore_mode = False
+        self.input_type = None
         self.zoom_active = False
         self.zoom_xmin = None
         self.zoom_xmax = None
+        self.temp_width = None
 
         self.input_mode = False
         self.input_text = ""
@@ -67,6 +71,7 @@ class EW:
 
 
     def load_data(self):
+
 
         ext = os.path.splitext(self.fits_file)[1].lower()
 
@@ -100,7 +105,31 @@ class EW:
         self.output_dir = f"ajustes_{base}_{today}"
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.pdf = PdfPages(os.path.join(self.output_dir, "resultados.pdf"))
+        # --------------------------------
+        # PATHS IMPORTANTES
+        # --------------------------------
+        self.csv_path = os.path.join(self.output_dir, "resultados.csv")
+        self.pdf_path = os.path.join(self.output_dir, "resultados.pdf")
+        self.new_pdf_path = os.path.join(self.output_dir, "resultados_new.pdf")
+
+        # --------------------------------
+        # CARGAR RESULTADOS PREVIOS (si existen)
+        # --------------------------------
+        if os.path.exists(self.csv_path):
+            print("[INFO] Cargando resultados previos...")
+            try:
+                df_prev = pd.read_csv(self.csv_path)
+                self.results = df_prev.to_dict("records")
+            except:
+                print("[WARNING] No se pudo leer el CSV previo → empezando vacío")
+                self.results = []
+        else:
+            self.results = []
+
+        # --------------------------------
+        # PDF NUEVO (siempre temporal)
+        # --------------------------------
+        self.pdf = PdfPages(self.new_pdf_path)
 
     #una sola gaussiana
     def gaussian_absorption(self, x, A, mu, sigma):
@@ -261,11 +290,24 @@ class EW:
         if self.zoom_active and self.zoom_xmin is not None:
             xmin, xmax = self.zoom_xmin, self.zoom_xmax
         else:
-            xmin, xmax = center - self.width, center + self.width
+            width = self.temp_width if self.temp_width is not None else self.width
+            xmin, xmax = center - width, center + width
 
         mask = (self.wavelength > xmin) & (self.wavelength < xmax)
         x = self.wavelength[mask]
         y = self.flux[mask]
+
+
+        #ANCHO ESCOGIBLE
+        width = self.temp_width if self.temp_width is not None else self.width
+
+        self.ax.text(
+            0.02, 0.88,
+            f"Width: {width:.2f}",
+            transform=self.ax.transAxes,
+            fontsize=9,
+            bbox=dict(facecolor='white', alpha=0.6)
+        )
 
         # --------------------------------
         # PLOT PRINCIPAL
@@ -298,8 +340,8 @@ class EW:
                     coeffs = np.polyfit([x1, x2], [y1, y2], 1)
                     y_ref = np.polyval(coeffs, x_ref)
 
-                    self.ax.plot(x_ref, y_ref, 'r-', lw=2, label="Continuo ref")
-                    self.ax.plot([x1, x2], [y1, y2], 'ro')
+                    self.ax.plot(x_ref, y_ref, 'r-', lw=2, linestyle = (0, (5, 5)), label="Continuo ref")
+                    self.ax.plot([x1, x2], [y1, y2], 'bo', color = "blue")
 
                     self.ax.legend()
 
@@ -341,7 +383,7 @@ class EW:
         # --------------------------------
         if self.zoom_active:
             self.ax.text(
-                0.02, 0.88,
+                0.02, 0.81,
                 f"ZOOM: {xmin:.2f} - {xmax:.2f}",
                 transform=self.ax.transAxes,
                 fontsize=9,
@@ -363,8 +405,11 @@ class EW:
         # --------------------------------
         # TÍTULO Y GRID
         # --------------------------------
-        self.ax.set_title(f"Línea {self.index+1} λ={center:.3f}")
+        element = self.line_data.iloc[self.index].get("element", "")
+        self.ax.set_title(f"Línea {self.index+1} λ_c = {center:.3f} Å ({element})")
         self.ax.grid()
+        self.ax.set_xlabel("Wavelength [Å]")
+        self.ax.set_ylabel("Flux")
 
         plt.draw()
 
@@ -433,7 +478,9 @@ class EW:
                 sigma = popt[3*i+2]
 
                 component = self.single_gaussian_component(x, A, mu, sigma)
-                EW_i = np.trapezoid(component, x) * 1000
+                model_i = 1 - component
+                EW_i = np.trapezoid(1 - model_i, x) * 1000
+                #EW_i = np.trapezoid(component, x) * 1000  # OK solo si estás seguro que component = absorción pura
 
                 EW_components.append(EW_i)
                 mus.append(mu)
@@ -455,14 +502,17 @@ class EW:
             for i in range(len(popt)//3):
                 text += f"{i+1}: μ={mus[i]:.4f}, EW={EW_components[i]:.2f}\n"
 
-            text += f"\nEW(target) = {EW_target:.2f}"
+            text += (
+                f"\n\nEW(target) = {EW_target:.2f} mÅ\n"
+                f"FWHM(target) = {FWHM:.3f} Å"
+            )
 
 
         # --------------------------------
         # CASO NORMAL
         # --------------------------------
         else:
-            A_guess = 1 - np.min(y_norm)
+            A_guess = np.clip(1 - np.min(y_norm), 0.01, 1.0)
             mu_guess = x[np.argmin(y_norm)]
 
             try:
@@ -483,7 +533,11 @@ class EW:
 
             EW_target = np.trapezoid(1 - y_norm, x) * 1000
 
-            text = f"μ={mu_fit:.4f}\nEW={EW_target:.2f}"
+            text = (
+                f"μ = {mu_fit:.4f} Å\n"
+                f"EW = {EW_target:.2f} mÅ\n"
+                f"FWHM = {FWHM:.3f} Å"
+            )
 
 
         # calidad del ajuste
@@ -540,6 +594,27 @@ class EW:
         self.ax.plot(x, model, 'r--')
         self.ax.plot(x, continuum, 'b--')
 
+
+        # --------------------------------
+        # RECTÁNGULO VISUAL DEL ÁREA (EW aprox)
+        # --------------------------------
+        rect_x = [xmin, xmax]
+        rect_y_bottom = 0
+        rect_y_top = 1  # continuo normalizado
+
+        self.ax.fill_between(
+            rect_x,
+            rect_y_bottom,
+            rect_y_top,
+            color='cyan',
+            alpha=0.15,
+            step='mid'
+        )
+
+
+        # --------------------------------
+        # ZOOM
+        # --------------------------------
         # --------------------------------
         # ZOOM
         # --------------------------------
@@ -553,18 +628,23 @@ class EW:
         if continuum_ext is None:
             return
 
-        y_ext_norm = y_ext / continuum_ext
-
+        # crear ax2
         self.ax2 = self.fig.add_axes([0.6, 0.15, 0.35, 0.7])
-        self.ax2.plot(x_ext, y_ext_norm, 'ko', ms=3)
-        self.ax2.plot(x, model, 'r--')
+
+        # AHORA sí puedes plotear
+        self.ax2.plot(x_ext, y_ext, 'ko', ms=3, label="Data")
+        self.ax2.plot(x_ext, continuum_ext, 'b--', lw=1.5, label="Continuo")
+        self.ax2.plot(x, model * continuum, 'r--', label="Fit")
+
+        self.ax2.set_xlabel("Wavelength [Å]")
+        self.ax2.set_ylabel("Flux")
 
         self.ax2.set_xlim(xmin - x_margin, xmax + x_margin)
         self.ax2.set_title("Zoom")
         self.ax2.grid()
 
         self.ax2.text(
-            0.95,0.05,
+            0.95, 0.05,
             text + f"\nχ²={chi2:.2f}",
             transform=self.ax2.transAxes,
             ha='right', va='bottom',
@@ -582,62 +662,96 @@ class EW:
     # --------------------------------
     def on_key(self, event):
 
+        if self.input_mode and event.key not in ["enter"]:
+
+            if event.key == "backspace":
+                self.input_text = self.input_text[:-1]
+
+            elif event.key == "space":
+                self.input_text += " "
+
+            elif len(event.key) == 1:
+                self.input_text += event.key
+
+            self.show_line()
+            return
+
 
         if self.input_mode:
 
             if event.key == "enter":
                 try:
-                    parts = self.input_text.replace("=", " ").split()
+                    txt = self.input_text.replace(",", " ").replace("width=", "")
+                    parts = txt.split()
 
-                    xmin = float(parts[1])
-                    xmax = float(parts[3])
+                    # -------------------------
+                    # WIDTH MODE
+                    # -------------------------
+                    if hasattr(self, "input_type") and self.input_type == "width":
 
-                    self.zoom_xmin = xmin
-                    self.zoom_xmax = xmax
-                    self.zoom_active = True
+                        if len(parts) == 0:
+                            raise ValueError
 
-                    print(f"[ZOOM] {xmin} - {xmax}")
+                        w = float(parts[0])
 
-                    # mover al lambda más cercano
-                    center = (xmin + xmax)/2
-                    idx = np.argmin(np.abs(self.line_centers - center))
-                    self.index = idx
+                        if w <= 0:
+                            raise ValueError
+
+                        self.temp_width = w
+                        print(f"[WIDTH TEMP] {w}")
+
+                    # -------------------------
+                    # ZOOM MODE (tu código original)
+                    # -------------------------
+                    else:
+
+                        if len(parts) == 1:
+                            center = float(parts[0])
+                            delta = 0.5
+                            xmin = center - delta
+                            xmax = center + delta
+
+                        elif len(parts) == 2:
+                            xmin = float(parts[0])
+                            xmax = float(parts[1])
+
+                            if xmin > xmax:
+                                xmin, xmax = xmax, xmin
+
+                        else:
+                            raise ValueError
+
+                        self.zoom_xmin = xmin
+                        self.zoom_xmax = xmax
+                        self.zoom_active = True
+
+                        print(f"[ZOOM] {xmin} - {xmax}")
+
+                        center = (xmin + xmax) / 2
+                        idx = np.argmin(np.abs(self.line_centers - center))
+                        self.index = idx
 
                 except:
-                    print("Formato inválido. Usa xmin=... xmax=...")
+                    print("Formato inválido")
 
                 self.input_mode = False
                 self.input_text = ""
+                self.input_type = None
+
                 self.show_line()
                 return
-
-            elif event.key == "backspace":
-                self.input_text = self.input_text[:-1]
-
-            elif len(event.key) == 1:
-                self.input_text += event.key
-
-            # dibujar panel
-            self.ax.text(
-                0.02, 0.05,
-                self.input_text,
-                transform=self.ax.transAxes,
-                fontsize=10,
-                bbox=dict(facecolor='white', alpha=0.8)
-            )
-
-            plt.draw()
-            return
 
         # siguiente línea
         if event.key == "n":
             self.index = min(len(self.line_centers)-1, self.index+1)
+            self.temp_width = None
             self.click_points.clear()
             self.show_line()
 
         # línea anterior
         if event.key == "p":
             self.index = max(0, self.index-1)
+            self.temp_width = None
             self.click_points.clear()
             self.show_line()
 
@@ -648,6 +762,9 @@ class EW:
 
             if len(self.click_points) >= 2:
                 self.auto_fit()
+
+            if event.xdata is None or event.ydata is None:
+                return
 
         # activar/desactivar blending
         if event.key == "b":
@@ -671,10 +788,15 @@ class EW:
                 self.ax.axvline(xmax, color='red')
                 self.ax.axvspan(xmin, xmax, color='red', alpha=0.1)
 
+            if event.xdata is None or event.ydata is None:
+                return
+
         # agregar centros de líneas en blending
         if event.key == "g" and self.blending_mode:
             self.blend_centers.append(event.xdata)
             self.ax.axvline(event.xdata, color="purple", ls="--")
+            if event.xdata is None or event.ydata is None:
+                return
 
         # ejecutar fit en blending
         if event.key == "enter" and self.blending_mode:
@@ -686,6 +808,8 @@ class EW:
             self.blend_centers.clear()
             self.blending_mode = False
 
+
+            self.temp_width = None
             self.zoom_active = False
             self.zoom_xmin = None
             self.zoom_xmax = None
@@ -708,7 +832,14 @@ class EW:
         if event.key == "c" and self.explore_mode:
             self.input_mode = True
             self.input_text = ""
-            print("Input: xmin=... xmax=...")
+            self.input_type = "zoom"
+            print("Input: λ   o   xmin xmax")
+
+        if event.key == "w" and self.explore_mode:
+            self.input_mode = True
+            self.input_text = "width="
+            self.input_type = "width"
+            print("Input width:")
 
 
         if event.key == "a":
@@ -720,13 +851,51 @@ class EW:
 
         # cerrar
         if event.key == "q":
+
+            # -----------------------------
+            # GUARDAR CSV (append lógico)
+            # -----------------------------
             df = pd.DataFrame(self.results)
-            csv_path = os.path.join(self.output_dir, "resultados.csv")
-            df.to_csv(csv_path, index=False)
+            df.to_csv(self.csv_path, index=False)
 
             self.pdf.close()
 
-            print(f"Resultados guardados en {csv_path}")
+            # -----------------------------
+            # MERGE PDF (acumular sesiones)
+            # -----------------------------
+            try:
+                from pypdf import PdfWriter, PdfReader
+
+                if os.path.exists(self.pdf_path):
+
+                    writer = PdfWriter()
+
+                    # PDF antiguo
+                    reader_old = PdfReader(self.pdf_path)
+                    for page in reader_old.pages:
+                        writer.add_page(page)
+
+                    # PDF nuevo
+                    reader_new = PdfReader(self.new_pdf_path)
+                    for page in reader_new.pages:
+                        writer.add_page(page)
+
+                    with open(self.pdf_path, "wb") as f:
+                        writer.write(f)
+
+                    os.remove(self.new_pdf_path)
+
+                    print("[PDF] Se agregó la sesión al PDF existente")
+
+                else:
+                    os.rename(self.new_pdf_path, self.pdf_path)
+                    print("[PDF] PDF creado")
+
+            except Exception as e:
+                print("[WARNING] Falló merge PDF:", e)
+                print("Se mantiene resultados_new.pdf")
+
+            print(f"Resultados guardados en {self.csv_path}")
             plt.close()
 
         plt.draw()
