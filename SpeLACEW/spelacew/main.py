@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from PyAstronomy import pyasl
 import sys
 from pypdf import PdfWriter, PdfReader
+from matplotlib.gridspec import GridSpec
 
 
 
@@ -36,8 +37,15 @@ class EW:
         self.results = []
 
         # figura
-        self.fig, self.ax = plt.subplots(figsize=(9,5))
-        self.ax2 = None
+        self.show_zoom = False
+        self.fig = plt.figure(figsize=(12,5))
+        self.fig.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.1, wspace=0.05)
+
+
+        gs = GridSpec(1, 2, width_ratios=[3, 1])
+
+        self.ax = self.fig.add_subplot(gs[0])   # principal
+        self.ax2 = self.fig.add_subplot(gs[1])  # zoom SIEMPRE existe
 
         self.v_line = self.ax.axvline(0, color='m', linestyle='--', visible=False)
         self.h_line = self.ax.axhline(0, color='m', linestyle='--', visible=False)
@@ -164,7 +172,7 @@ class EW:
 
     # Equivalent Width desde modelo
     def compute_EW_model(self, x, model):
-        return np.trapezoid((1 - model), x) * 1000   # en mÅ
+        return np.trapz((1 - model), x) * 1000   # en mÅ
 
     # Estimación de ruido
     def estimate_noise(self, y, model):
@@ -268,19 +276,22 @@ class EW:
 
         self.ax.clear()
 
+        if self.show_zoom:
+            self.ax2.set_visible(True)
+            self.ax.set_position([0.07, 0.1, 0.65, 0.8])   # más angosto
+            self.ax2.set_position([0.75, 0.1, 0.22, 0.8])  # aparece derecha
+            self.ax2.clear()
+        else:
+            self.ax2.set_visible(False)
+            self.ax.set_position([0.07, 0.1, 0.9, 0.8])    # ocupa casi todo
+        
+
         # --------------------------------
         # CROSSHAIR
         # --------------------------------
         self.v_line = self.ax.axvline(0, color='m', linestyle='--', linewidth=0.8, visible=False)
         self.h_line = self.ax.axhline(0, color='m', linestyle='--', linewidth=0.8, visible=False)
 
-        # eliminar zoom anterior (subplot derecho)
-        if self.ax2 is not None:
-            try:
-                self.ax2.remove()
-            except:
-                pass
-            self.ax2 = None
 
         center = self.line_centers[self.index]
 
@@ -411,7 +422,8 @@ class EW:
         self.ax.set_xlabel("Wavelength [Å]")
         self.ax.set_ylabel("Flux")
 
-        plt.draw()
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
 
 
     # --------------------------------
@@ -420,7 +432,6 @@ class EW:
     # Hace el ajuste automático (normal o blending)
     def auto_fit(self):
 
-        
 
         target_idx = None
         mu_fit = None
@@ -479,7 +490,7 @@ class EW:
 
                 component = self.single_gaussian_component(x, A, mu, sigma)
                 model_i = 1 - component
-                EW_i = np.trapezoid(1 - model_i, x) * 1000
+                EW_i = np.trapz(1 - model_i, x) * 1000
                 #EW_i = np.trapezoid(component, x) * 1000  # OK solo si estás seguro que component = absorción pura
 
                 EW_components.append(EW_i)
@@ -531,7 +542,8 @@ class EW:
 
             FWHM = self.compute_fwhm(sigma_fit)
 
-            EW_target = np.trapezoid(1 - y_norm, x) * 1000
+            #EW_target = np.trapezoid(1 - y_norm, x) * 1000
+            EW_target = self.compute_EW_model(x, model)
 
             text = (
                 f"μ = {mu_fit:.4f} Å\n"
@@ -589,6 +601,13 @@ class EW:
 
         print(f"[AUTO-SAVE] λ={self.line_centers[self.index]:.3f} EW={EW_target:.2f}")
 
+        self.show_zoom = True
+        self.show_line()
+
+        for txt in self.ax.texts:
+            if txt.get_position()[1] < 0.1:  # solo borra los de abajo
+                txt.remove()
+
         # gráfico principal
         self.ax.plot(x, y_norm, 'ko', ms=3)
         self.ax.plot(x, model, 'r--')
@@ -628,8 +647,8 @@ class EW:
         if continuum_ext is None:
             return
 
-        # crear ax2
-        self.ax2 = self.fig.add_axes([0.6, 0.15, 0.35, 0.7])
+
+        self.ax2.clear()
 
         # AHORA sí puedes plotear
         self.ax2.plot(x_ext, y_ext, 'ko', ms=3, label="Data")
@@ -643,18 +662,20 @@ class EW:
         self.ax2.set_title("Zoom")
         self.ax2.grid()
 
-        self.ax2.text(
-            0.95, 0.05,
+
+        self.ax.text(
+            0.02, 0.02,
             text + f"\nχ²={chi2:.2f}",
-            transform=self.ax2.transAxes,
-            ha='right', va='bottom',
+            transform=self.ax.transAxes,
+            ha='left', va='bottom',
             bbox=dict(facecolor="white", alpha=0.8)
         )
 
         # guardar en PDF
         self.pdf.savefig(self.fig)
 
-        plt.draw()
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
 
 
     # --------------------------------
@@ -745,6 +766,7 @@ class EW:
         if event.key == "n":
             self.index = min(len(self.line_centers)-1, self.index+1)
             self.temp_width = None
+            self.show_zoom = False
             self.click_points.clear()
             self.show_line()
 
@@ -752,6 +774,7 @@ class EW:
         if event.key == "p":
             self.index = max(0, self.index-1)
             self.temp_width = None
+            self.show_zoom = False
             self.click_points.clear()
             self.show_line()
 
@@ -801,11 +824,14 @@ class EW:
         # ejecutar fit en blending
         if event.key == "enter" and self.blending_mode:
             self.auto_fit()
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
 
         # reset completo
         if event.key == "r":
             self.click_points.clear()
             self.blend_centers.clear()
+            self.show_zoom = False
             self.blending_mode = False
 
 
@@ -898,7 +924,8 @@ class EW:
             print(f"Resultados guardados en {self.csv_path}")
             plt.close()
 
-        plt.draw()
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
 
 
     # --------------------------------
@@ -1000,7 +1027,8 @@ if __name__ == "__main__":
     else:
         EW.run()
 
-    
+def main():
+    EW.run()
 
 
 
