@@ -186,6 +186,101 @@ spelacew HD10700.fits lines_fe.csv 1.5 solar_reference.csv
 
 ---
 
+# Python / IPython Usage
+
+SpelacEW can also be executed directly from Python or IPython environments.
+
+This is useful for:
+
+- interactive scientific workflows
+- Jupyter notebooks
+- debugging
+- custom spectroscopy pipelines
+- integration with other analysis tools
+
+---
+
+## Importing the package
+
+```python
+from spelacew import EW
+```
+
+---
+
+## Interactive execution
+
+Run the interactive interface:
+
+```python
+EW.run()
+```
+
+The program will request:
+
+- spectrum file
+- line list
+- optional reference EW file
+- optional visualization width
+
+---
+
+## Example
+
+```python
+from spelacew import EW
+
+EW.run()
+```
+
+---
+
+## Direct object creation
+
+You may also instantiate the class manually:
+
+```python
+from spelacew import EW
+
+obj = EW(
+    "HD10700.fits",
+    "lines.csv",
+    "solar_reference.csv",
+    1.5
+)
+```
+
+Parameters:
+
+| Parameter | Description |
+|---|---|
+| spectrum file | Observed spectrum |
+| line list | CSV containing spectral lines |
+| star reference | Optional reference EW dataset |
+| width | Spectral visualization window in Å |
+
+---
+
+## Recommended IPython Workflow
+
+Example:
+
+```bash
+ipython
+```
+
+```python
+from spelacew import EW
+
+EW.run()
+```
+
+This mode is particularly convenient during:
+
+- interactive spectrum inspection
+- spectroscopic teaching activities
+- exploratory stellar spectroscopy
+
 # Interactive Interface
 
 The interface displays:
