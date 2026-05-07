@@ -1,164 +1,463 @@
-# 📊 DAPA – Medición interactiva de Equivalent Width (EW)
+# SpelacEW
 
-Herramienta interactiva en Python para el análisis de líneas espectrales y cálculo de Equivalent Width (EW), con soporte para ajuste individual y blending de múltiples líneas.
+Interactive spectral line fitting and Equivalent Width (EW) measurement tool for stellar spectroscopy.
+
+SpelacEW is a Python-based interactive software designed for the analysis of stellar absorption lines through manual continuum placement and Gaussian profile fitting. The code allows the user to inspect spectral regions individually, perform single-line or multi-line (blended) fits, and export reproducible measurements in a structured format.
+
+The project was developed for high-control spectroscopic analysis workflows where visual inspection and user-guided continuum selection are essential.
 
 ---
 
-##  Descripción
+# Features
 
-Este código permite analizar espectros estelares en formato FITS junto con una lista de líneas espectrales (CSV), realizando:
-
-- Selección manual del continuo
-- Ajuste gaussiano de líneas de absorción
-- Manejo de líneas mezcladas (*blending*)
-- Cálculo de:
+- Interactive visualization of stellar spectra
+- Support for:
+  - FITS spectra
+  - ASCII/TXT/CSV spectra
+- Manual continuum placement
+- Gaussian fitting of absorption lines
+- Multi-Gaussian fitting for blended lines
+- Automatic calculation of:
   - Equivalent Width (EW)
-  - FWHM
-  - χ² reducido
-- Generación automática de:
-  - Imágenes por línea
-  - PDF con todos los ajustes
-  - CSV con resultados finales
+  - Full Width at Half Maximum (FWHM)
+  - Reduced chi-square (χ²)
+- Reference continuum visualization from external datasets
+- Interactive spectral exploration mode
+- Automatic generation of:
+  - CSV results tables
+  - Multi-page PDF reports
+- Session accumulation:
+  - Existing results are preserved between runs
+  - PDFs are automatically merged across sessions
 
 ---
 
-##  Instalación
+# Scientific Motivation
 
-Requiere Python 3 y las siguientes librerías:
+Precise measurement of spectral line parameters is a fundamental task in stellar spectroscopy and abundance analysis. While fully automated EW pipelines are efficient for large datasets, many scientific applications still require manual inspection due to:
+
+- blended spectral features
+- continuum uncertainties
+- local noise structures
+- line asymmetries
+- crowded spectral regions
+
+SpelacEW was designed as a semi-manual high-control alternative, prioritizing:
+
+- reproducibility
+- visual inspection
+- interactive continuum definition
+- robust treatment of blended lines
+
+This makes the code particularly useful for:
+
+- stellar abundance studies
+- chemical tagging
+- solar reference comparisons
+- educational spectroscopy workflows
+- spectroscopic quality control
+
+---
+
+# Installation
+
+## Clone repository
 
 ```bash
-pip install numpy matplotlib scipy pandas
+git clone https://github.com/USERNAME/spelacew.git
+cd spelacew
 ```
 
----
+## Install package
 
-## ▶ Uso
+Recommended installation:
 
 ```bash
-python DAPA_save.py espectro.fits lineas.csv [width]
+pip install -e .
 ```
 
-- `espectro.fits` → espectro observado  
-- `lineas.csv` → lista de líneas espectrales  
-- `width` (opcional) → ventana en Å alrededor de cada línea (default = 1.5)
+This enables the command-line interface:
 
----
-
-##  Interfaz
-
-El programa abre una ventana interactiva con:
-
-- Espectro centrado en cada línea
-- Línea vertical verde = centro teórico
-- Cursor tipo crosshair (mouse)
-- Panel de zoom automático tras el ajuste
-
----
-
-##  Controles
-
-### Navegación
-- `n` → siguiente línea  
-- `p` → línea anterior  
-
-### Ajuste normal
-- `k` → seleccionar puntos del continuo (2 clicks)  
-  → ejecuta automáticamente el fit  
-
-### Blending
-- `b` → activar/desactivar modo blending  
-- `d` → seleccionar región de blending (2 puntos)  
-- `g` → agregar centros de líneas  
-- `Enter` → ejecutar fit multi-gaussiano  
-
-### Otros
-- `r` → reset completo  
-- `q` → salir y guardar resultados  
-
----
-
-##  Output
-
-Al ejecutar, se genera una carpeta:
-
-```
-ajustes_EW_<nombre_espectro>_<fecha>/
+```bash
+spelacew
 ```
 
-Contiene:
+---
 
-###  Imágenes
-- `line_1.png`, `line_2.png`, etc.
-- Cada imagen incluye:
-  - Espectro normalizado
-  - Ajuste gaussiano
-  - Continuo
-  - Zoom de la región
+# Dependencies
 
-###  PDF
-- `resultados.pdf`
-- Contiene todas las figuras generadas durante la sesión  
-👉 Ideal para revisión o presentación
+Main dependencies:
 
-###  CSV
-- `resultados.csv`
+- numpy
+- scipy
+- matplotlib
+- pandas
+- PyAstronomy
+- pypdf
 
-Columnas:
-- wavelength
-- wave_left, wave_right
-- continuum (left/right)
-- element, species
-- ep, gf
-- EW (mÅ)
-- FWHM
-- Chi² reducido
+Python >= 3.9 is required.
 
 ---
 
-##  Notas sobre el ajuste
+# Input Data
 
-- El continuo se define manualmente con dos puntos.
-- El espectro se normaliza antes del ajuste.
-- El EW se calcula mediante integración numérica.
+## Spectrum
 
----
+Supported formats:
 
-##  Consejo importante (muy clave)
+- `.fits`
+- `.fit`
+- `.txt`
+- `.dat`
+- `.ascii`
+- `.csv`
 
-Si el ajuste falla o da resultados poco físicos:
+ASCII files must contain:
 
- **Selecciona un continuo más extendido**
+```text
+wavelength flux
+```
 
-### ¿Por qué funciona?
-
-Cuando eliges un rango muy pequeño:
-
-- El continuo se estima mal
-- El ruido domina
-- La normalización queda incorrecta
-
-En cambio, al ampliar la región:
-
-- Se captura mejor la forma real del continuo
-- Se reduce el impacto del ruido
-- El ajuste gaussiano se vuelve más estable
-
- En términos físicos: estás mejor aproximando el nivel base del flujo estelar.
+in two columns.
 
 ---
 
-##  Estado del proyecto
+## Line List
 
-- ✔ Funcional para análisis interactivo  
-- ✔ Soporte para blending  
-- ✔ Exportación completa (PNG + PDF + CSV)  
--  Futuro:
-  - Empaquetado como `pip install`
-  - Automatización del continuo
-  - Mejoras en GUI
+The line list must be provided as a CSV file.
+
+Minimum required column:
+
+```text
+wavelength
+```
+
+Optional columns:
+
+- element
+- species
+- ep
+- gf
+
+Example:
+
+```csv
+wavelength,element,species,ep,gf
+6562.79,H,1,10.2,-0.3
+```
 
 ---
 
-##  Autor
+# Usage
 
-Daniel Pérez
+## Interactive mode
+
+Run:
+
+```bash
+spelacew
+```
+
+The program will ask interactively for:
+
+- spectrum file
+- line list
+- optional reference file
+- optional width
+
+---
+
+## Command-line mode
+
+```bash
+spelacew spectrum.fits lines.csv
+```
+
+Optional arguments:
+
+```bash
+spelacew spectrum.fits lines.csv width
+```
+
+or
+
+```bash
+spelacew spectrum.fits lines.csv width reference.csv
+```
+
+Example:
+
+```bash
+spelacew HD10700.fits lines_fe.csv 1.5 solar_reference.csv
+```
+
+---
+
+# Interactive Interface
+
+The interface displays:
+
+- observed spectrum
+- theoretical line center
+- crosshair cursor
+- local spectral window
+- automatic zoom panel after fitting
+- reference continuum visualization (optional)
+
+The user interacts entirely through keyboard commands.
+
+---
+
+# Controls
+
+## Navigation
+
+| Key | Action |
+|---|---|
+| `n` | Next spectral line |
+| `p` | Previous spectral line |
+
+---
+
+## Normal Fitting Mode
+
+| Key | Action |
+|---|---|
+| `k` | Select continuum points |
+
+Procedure:
+
+1. Press `k` on left continuum region
+2. Press `k` on right continuum region
+3. Fit executes automatically
+
+The continuum is estimated through a linear interpolation between the selected points.
+
+---
+
+## Blending Mode
+
+| Key | Action |
+|---|---|
+| `b` | Enable/disable blending mode |
+| `d` | Define fitting region |
+| `g` | Add Gaussian component center |
+| `Enter` | Execute multi-Gaussian fit |
+
+This mode is intended for partially or strongly blended spectral features.
+
+Each Gaussian component is fitted simultaneously.
+
+---
+
+## Exploration Mode
+
+| Key | Action |
+|---|---|
+| `x` | Enable exploration mode |
+| `c` | Manual zoom input |
+| `w` | Change visualization width |
+
+Exploration mode allows free navigation through the spectrum independently of the predefined line list.
+
+---
+
+## Other Commands
+
+| Key | Action |
+|---|---|
+| `r` | Full reset |
+| `a` | Cancel input |
+| `q` | Save and quit |
+
+---
+
+# Outputs
+
+For each session, the program generates a directory:
+
+```text
+ajustes_<spectrum_name>_<date>/
+```
+
+Example:
+
+```text
+ajustes_HD10700_2026-05-06/
+```
+
+---
+
+## CSV Results
+
+File:
+
+```text
+resultados.csv
+```
+
+Contains:
+
+| Column | Description |
+|---|---|
+| wavelength | Central wavelength |
+| wave_left | Left fitting boundary |
+| wave_right | Right fitting boundary |
+| left_continuum | Left continuum level |
+| right_continuum | Right continuum level |
+| element | Atomic species |
+| species | Ionization state |
+| ep | Excitation potential |
+| gf | Oscillator strength |
+| ew_ref | Reference EW |
+| ew | Measured EW |
+| FWHM | Full Width at Half Maximum |
+| Chi2R | Reduced χ² |
+| hpf | Reserved parameter |
+
+Equivalent Width values are reported in milli-Angstroms (mÅ).
+
+---
+
+## PDF Report
+
+File:
+
+```text
+resultados.pdf
+```
+
+Contains one page per fitted line including:
+
+- observed spectrum
+- continuum model
+- Gaussian fit
+- zoom visualization
+- fit diagnostics
+
+PDF sessions are automatically merged between runs.
+
+---
+
+# Fitting Methodology
+
+## Continuum Normalization
+
+The continuum is defined manually using two user-selected points.
+
+A linear continuum model is constructed through:
+
+```math
+F_c(\lambda) = a\lambda + b
+```
+
+The observed spectrum is normalized as:
+
+```math
+F_{norm} = \frac{F}{F_c}
+```
+
+---
+
+## Gaussian Model
+
+Single-line fits use:
+
+```math
+F(\lambda) =
+1 - A \exp
+\left(
+-\frac{(\lambda-\mu)^2}{2\sigma^2}
+\right)
+```
+
+where:
+
+- \(A\) = line depth
+- \(\mu\) = line center
+- \(\sigma\) = Gaussian width
+
+---
+
+## Multi-Gaussian Blending
+
+For blended lines:
+
+```math
+F(\lambda)=
+1-
+\sum_i
+A_i
+\exp
+\left(
+-\frac{(\lambda-\mu_i)^2}{2\sigma_i^2}
+\right)
+```
+
+Each component is fitted simultaneously.
+
+---
+
+## Equivalent Width
+
+Equivalent Width is computed numerically as:
+
+```math
+EW =
+\int
+(1-F_{norm}) d\lambda
+```
+
+and reported in milli-Angstroms (mÅ).
+
+---
+
+# Recommended Usage
+
+For more stable fits:
+
+- select continuum regions wider than the line core
+- avoid noisy edge regions
+- inspect blended features manually
+- verify continuum placement visually
+
+Broader continuum selections generally improve normalization stability and reduce sensitivity to local noise fluctuations.
+
+---
+
+# Current Status
+
+Current implemented features:
+
+- Interactive continuum selection
+- Single Gaussian fitting
+- Multi-Gaussian blending
+- EW/FWHM/χ² calculations
+- PDF and CSV export
+- Reference EW comparison
+- Spectral exploration mode
+- Session accumulation
+
+Planned future developments:
+
+- automatic continuum estimation
+- Voigt profile support
+- radial velocity correction tools
+- abundance pipeline integration
+- GUI improvements
+- batch-processing utilities
+
+---
+
+# Citation
+
+If you use SpelacEW in scientific work, please cite the repository and acknowledge the software appropriately.
+
+---
+
+# Author
+
+Daniel Pérez  
+Universidad de Concepción
+
+---
