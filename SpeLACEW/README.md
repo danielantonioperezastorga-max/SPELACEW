@@ -129,15 +129,8 @@ The line list must be provided as a CSV file.
 Minimum required column:
 
 ```text
-wavelength
+wavelength, element, species, ep, gf
 ```
-
-Optional columns:
-
-- element
-- species
-- ep
-- gf
 
 Example:
 
