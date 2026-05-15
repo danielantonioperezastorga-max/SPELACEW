@@ -488,9 +488,10 @@ class EW:
                 mu = popt[3*i+1]
                 sigma = popt[3*i+2]
 
-                component = self.single_gaussian_component(x, A, mu, sigma)
-                model_i = 1 - component
-                EW_i = np.trapz(1 - model_i, x) * 1000
+                #component = self.single_gaussian_component(x, A, mu, sigma)
+                #model_i = 1 - component
+                #EW_i = np.trapz(1 - model_i, x) * 1000
+                EW_i = self.compute_area(A, sigma) * 1000
                 #EW_i = np.trapezoid(component, x) * 1000  # OK solo si estás seguro que component = absorción pura
 
                 EW_components.append(EW_i)
@@ -538,12 +539,13 @@ class EW:
 
             model = self.gaussian_absorption(x,*popt)
 
+            A_fit = popt[0]
             mu_fit, sigma_fit = popt[1], popt[2]
 
             FWHM = self.compute_fwhm(sigma_fit)
 
             #EW_target = np.trapezoid(1 - y_norm, x) * 1000
-            EW_target = self.compute_EW_model(x, model)
+            EW_target = self.compute_area(A_fit, sigma_fit) * 1000
 
             text = (
                 f"μ = {mu_fit:.4f} Å\n"
@@ -1027,8 +1029,7 @@ if __name__ == "__main__":
     else:
         EW.run()
 
-def main():
-    EW.run()
+    
 
 
 
