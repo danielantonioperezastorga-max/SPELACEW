@@ -16,16 +16,27 @@ from matplotlib.gridspec import GridSpec
 
 
 class EW:
-    def __init__(self, fits_file, csv_file, solar_csv=None, width=1.5):
+    def __init__(
+        self,
+        fits_file,
+        csv_file,
+        ref_csv=None,
+        ref_spectrum=None,
+        width=1.5
+    ):
 
         self.fits_file = fits_file
         self.csv_file = csv_file
         self.width = width
-        self.solar_csv = solar_csv
+        self.ref_csv = ref_csv
+        self.ref_spectrum = ref_spectrum
 
         # datos
         self.wavelength = None
         self.flux = None
+        self.ref_wavelength = None
+        self.ref_flux = None
+        self.ref_flux_interp = None
         self.line_data = None
         self.line_centers = None
 
@@ -38,14 +49,20 @@ class EW:
 
         # figura
         self.show_zoom = False
-        self.fig = plt.figure(figsize=(12,5))
+        self.fig = plt.figure(figsize=(12,7))
         self.fig.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.1, wspace=0.05)
 
 
-        gs = GridSpec(1, 2, width_ratios=[3, 1])
+        self.ax = self.fig.add_axes([0.07, 0.30, 0.90, 0.62])
 
-        self.ax = self.fig.add_subplot(gs[0])   # principal
-        self.ax2 = self.fig.add_subplot(gs[1])  # zoom SIEMPRE existe
+        self.ax_diff = self.fig.add_axes(
+            [0.07, 0.10, 0.90, 0.16],
+            sharex=self.ax
+        )
+
+        self.ax2 = self.fig.add_axes([0.75, 0.10, 0.22, 0.82])
+        self.ax2.set_visible(False)
+
 
         self.v_line = self.ax.axvline(0, color='m', linestyle='--', visible=False)
         self.h_line = self.ax.axhline(0, color='m', linestyle='--', visible=False)
@@ -64,8 +81,8 @@ class EW:
 
         self.load_data()
 
-        if self.solar_csv is not None:
-            self.load_solar_EW(self.solar_csv)
+        if self.ref_csv is not None:
+            self.load_solar_EW(self.ref_csv)
 
         self.show_line()
 
@@ -76,33 +93,54 @@ class EW:
 
 
 
+    def read_spectrum(self, filename):
 
+        ext = os.path.splitext(filename)[1].lower()
+
+        if ext in [".fits", ".fit"]:
+            wavelength, flux = pyasl.read1dFitsSpec(filename)
+
+        elif ext in [".txt", ".dat", ".ascii", ".csv"]:
+
+            try:
+                data = np.loadtxt(filename)
+
+            except:
+                try:
+                    data = np.loadtxt(filename, delimiter=",")
+
+                except:
+                    data = np.loadtxt(filename, skiprows=1)
+
+            wavelength = data[:,0]
+            flux = data[:,1]
+
+        else:
+            raise ValueError(f"Formato no soportado: {ext}")
+
+        return wavelength, flux
 
     def load_data(self):
 
 
-        ext = os.path.splitext(self.fits_file)[1].lower()
+        self.wavelength, self.flux = self.read_spectrum(self.fits_file)
 
-        # -----------------------------
-        # LECTURA FLEXIBLE DE ARCHIVOS
-        # -----------------------------
-        if ext in [".fits", ".fit"]:
-            self.wavelength, self.flux = pyasl.read1dFitsSpec(self.fits_file)
+        if self.ref_spectrum is not None:
 
-        elif ext in [".txt", ".dat", ".ascii", ".csv"]:
-            try:
-                data = np.loadtxt(self.fits_file)
-            except:
-                try:
-                    data = np.loadtxt(self.fits_file, delimiter=",")
-                except:
-                    data = np.loadtxt(self.fits_file, skiprows=1)
+            print("[INFO] Loading reference spectrum...")
 
-            self.wavelength = data[:, 0]
-            self.flux = data[:, 1]
+            self.ref_wavelength, self.ref_flux = self.read_spectrum(
+                self.ref_spectrum
+            )
 
-        else:
-            raise ValueError(f"Formato no soportado: {ext}")
+            self.ref_flux_interp = np.interp(
+                self.wavelength,
+                self.ref_wavelength,
+                self.ref_flux,
+                left=np.nan,
+                right=np.nan
+            )
+
         
         self.line_data = pd.read_csv(self.csv_file)
         self.line_centers = self.line_data.iloc[:,0].values
@@ -181,7 +219,8 @@ class EW:
     # Chi cuadrado reducido (calidad del fit)
     def compute_reduced_chi2(self, y, model, sigma, n_params):
         sigma = max(sigma, 1e-3)   # evita división por 0
-        return np.sum(((y - model)/sigma)**2) / (len(y) - n_params)
+        dof = max(len(y) - n_params, 1)
+        return np.sum(((y - model)/sigma)**2) / dof
     
 
 
@@ -233,9 +272,9 @@ class EW:
 
 
     #ESTA ES LA FUNCION NUEVA PARA EL LOAD DEL SOL
-    def load_solar_EW(self, solar_csv):
+    def load_solar_EW(self, ref_csv):
 
-        df_sun = pd.read_csv(solar_csv)
+        df_sun = pd.read_csv(ref_csv)
 
         print("Columnas disponibles:", df_sun.columns)
 
@@ -277,14 +316,46 @@ class EW:
         self.ax.clear()
 
         if self.show_zoom:
+
+            if self.ref_flux_interp is not None:
+
+                # MAIN
+                self.ax.set_position([0.07, 0.30, 0.62, 0.62])
+
+                # DIFF
+                self.ax_diff.set_position([0.07, 0.10, 0.62, 0.16])
+                self.ax_diff.set_visible(True)
+
+            else:
+
+                # MAIN más grande
+                self.ax.set_position([0.07, 0.10, 0.62, 0.82])
+
+                self.ax_diff.set_visible(False)
+
+            # ZOOM
+            self.ax2.set_position([0.73, 0.10, 0.24, 0.82])
             self.ax2.set_visible(True)
-            self.ax.set_position([0.07, 0.1, 0.65, 0.8])   # más angosto
-            self.ax2.set_position([0.75, 0.1, 0.22, 0.8])  # aparece derecha
-            self.ax2.clear()
+
         else:
+
+            if self.ref_flux_interp is not None:
+
+                # MAIN
+                self.ax.set_position([0.07, 0.30, 0.90, 0.62])
+
+                # DIFF
+                self.ax_diff.set_position([0.07, 0.10, 0.90, 0.16])
+                self.ax_diff.set_visible(True)
+
+            else:
+
+                # MAIN ocupa todo
+                self.ax.set_position([0.07, 0.10, 0.90, 0.82])
+
+                self.ax_diff.set_visible(False)
+
             self.ax2.set_visible(False)
-            self.ax.set_position([0.07, 0.1, 0.9, 0.8])    # ocupa casi todo
-        
 
         # --------------------------------
         # CROSSHAIR
@@ -308,6 +379,9 @@ class EW:
         x = self.wavelength[mask]
         y = self.flux[mask]
 
+        if self.ref_flux_interp is not None:
+            y_ref = self.ref_flux_interp[mask]
+
 
         #ANCHO ESCOGIBLE
         width = self.temp_width if self.temp_width is not None else self.width
@@ -320,15 +394,50 @@ class EW:
             bbox=dict(facecolor='white', alpha=0.6)
         )
 
-        # --------------------------------
-        # PLOT PRINCIPAL
-        # --------------------------------
-
 
         # --------------------------------
         # PLOT PRINCIPAL
         # --------------------------------
         self.ax.plot(x, y, 'k-')
+
+        if self.ref_flux_interp is not None:
+            y_ref = self.ref_flux_interp[mask]
+            self.ax.plot(x, y_ref, 'r-', alpha=0.7)
+
+        
+        self.ax_diff.clear()
+
+        if self.ref_flux_interp is not None:
+
+            y_ref = self.ref_flux_interp[mask]
+
+            self.ax.plot(x, y_ref, 'r-', alpha=0.7)
+
+            diff = y_ref - y
+
+            self.ax_diff.plot(x, diff, 'k-')
+
+            self.ax_diff.axhline(
+                0,
+                color='red',
+                linestyle='--',
+                linewidth=1
+            )
+
+            self.ax_diff.set_xlabel("Wavelength [Å]")
+
+            self.ax_diff.set_ylabel("Ref - Obj")
+
+        else:
+            self.ax_diff.text(
+                0.5,
+                0.5,
+                "No reference spectrum",
+                transform=self.ax_diff.transAxes,
+                ha='center'
+            )
+
+        self.ax_diff.set_ylim(-0.1, 0.1)
 
         # --------------------------------
         # CONTINUO DE REFERENCIA
@@ -419,8 +528,12 @@ class EW:
         element = self.line_data.iloc[self.index].get("element", "")
         self.ax.set_title(f"Línea {self.index+1} λ_c = {center:.3f} Å ({element})")
         self.ax.grid()
-        self.ax.set_xlabel("Wavelength [Å]")
+        self.ax.set_xlabel("")
         self.ax.set_ylabel("Flux")
+
+        self.ax_diff.set_xlabel("Wavelength [Å]")
+
+        plt.setp(self.ax.get_xticklabels(), visible=False)
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
@@ -655,7 +768,7 @@ class EW:
         # AHORA sí puedes plotear
         self.ax2.plot(x_ext, y_ext, 'ko', ms=3, label="Data")
         self.ax2.plot(x_ext, continuum_ext, 'b--', lw=1.5, label="Continuo")
-        self.ax2.plot(x, model * continuum, 'r--', label="Fit")
+        self.ax2.plot(x, model * continuum, 'hotpink', label="Fit")
 
         self.ax2.set_xlabel("Wavelength [Å]")
         self.ax2.set_ylabel("Flux")
@@ -760,6 +873,7 @@ class EW:
                 self.input_mode = False
                 self.input_text = ""
                 self.input_type = None
+                self.explore_mode = False
 
                 self.show_line()
                 return
@@ -782,6 +896,8 @@ class EW:
 
         # selección de región (modo normal)
         if event.key == "k" and not self.blending_mode:
+            if event.xdata is None or event.ydata is None:
+                return
             self.click_points.append((event.xdata, event.ydata))
             self.ax.plot(event.xdata, event.ydata, "go")
 
@@ -802,6 +918,8 @@ class EW:
 
         # definir región de blending
         if event.key == "d" and self.blending_mode:
+            if event.xdata is None or event.ydata is None:
+                return
             self.click_points.append((event.xdata, event.ydata))
             self.ax.plot(event.xdata, event.ydata, "go")
 
@@ -818,10 +936,12 @@ class EW:
 
         # agregar centros de líneas en blending
         if event.key == "g" and self.blending_mode:
-            self.blend_centers.append(event.xdata)
-            self.ax.axvline(event.xdata, color="purple", ls="--")
+
             if event.xdata is None or event.ydata is None:
                 return
+
+            self.blend_centers.append(event.xdata)
+            self.ax.axvline(event.xdata, color="purple", ls="--")
 
         # ejecutar fit en blending
         if event.key == "enter" and self.blending_mode:
@@ -961,7 +1081,7 @@ class EW:
             csv_file = sys.argv[2]
 
             width = 1.5
-            solar_csv = None
+            ref_csv = None
 
             if len(sys.argv) >= 4:
                 try:
@@ -970,9 +1090,14 @@ class EW:
                     print("Invalid width → using default 1.5")
 
             if len(sys.argv) >= 5:
-                solar_csv = sys.argv[4]
+                ref_csv = sys.argv[4]
 
-            return EW(fits_file, csv_file, solar_csv, width)
+            return EW(
+                fits_file,
+                csv_file,
+                ref_csv=ref_csv,
+                width=width
+            )
 
         # -------------------------
         # MODO INTERACTIVO
@@ -986,14 +1111,22 @@ class EW:
             print("ERROR: spectrum and line_list are required.")
             return None
 
-        ref = input("(optional) ref_spectrum (.csv): ").strip() or None
+        ref_csv = input("(optional) ref EW csv: ").strip() or None
+
+        ref_spec = input("(optional) ref spectrum: ").strip() or None
 
         width_input = input("(optional) width (default=1.5): ").strip()
         width = float(width_input) if width_input else 1.5
 
         print("\nLoading...\n")
 
-        return EW(spectra, lines, ref, width)
+        return EW(
+            spectra,
+            lines,
+            ref_csv,
+            ref_spec,
+            width
+        )
 
 
     
@@ -1010,18 +1143,31 @@ if __name__ == "__main__":
         csv_file = sys.argv[2]
 
         width = 1.5
-        solar_csv = None
+        ref_csv = None
+        ref_spectrum = None
 
+        # width
         if len(sys.argv) >= 4:
             try:
                 width = float(sys.argv[3])
             except:
                 print("Invalid width → using default 1.5")
 
+        # CSV referencia
         if len(sys.argv) >= 5:
-            solar_csv = sys.argv[4]
+            ref_csv = sys.argv[4]
 
-        EW(fits_file, csv_file, solar_csv, width)
+        # espectro referencia
+        if len(sys.argv) >= 6:
+            ref_spectrum = sys.argv[5]
+
+        EW(
+            fits_file=fits_file,
+            csv_file=csv_file,
+            ref_csv=ref_csv,
+            ref_spectrum=ref_spectrum,
+            width=width
+        )
 
     # -------------------------
     # MODO INTERACTIVO
@@ -1030,9 +1176,3 @@ if __name__ == "__main__":
         EW.run()
 
     
-
-
-
-
-
-
