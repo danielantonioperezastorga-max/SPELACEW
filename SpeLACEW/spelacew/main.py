@@ -42,6 +42,18 @@ class EW:
 
         # estado
         self.index = 0
+
+        self.overlay_spectra = []
+
+        self.overlay_colors = [
+            "cyan",
+            "lime",
+            "orange",
+            "magenta",
+            "yellow",
+            "deepskyblue"
+        ]
+
         self.click_points = []
         self.blending_mode = False
         self.blend_centers = []
@@ -290,6 +302,37 @@ class EW:
         self.solar_df = df_sun
 
 
+    def add_overlay_spectrum(self, filename):
+
+        try:
+            wave, flux = self.read_spectrum(filename)
+
+            interp_flux = np.interp(
+                self.wavelength,
+                wave,
+                flux,
+                left=np.nan,
+                right=np.nan
+            )
+
+            color = self.overlay_colors[
+                len(self.overlay_spectra) % len(self.overlay_colors)
+            ]
+
+            self.overlay_spectra.append({
+                "name": os.path.basename(filename),
+                "wavelength": wave,
+                "flux": flux,
+                "interp_flux": interp_flux,
+                "color": color
+            })
+
+            print(f"[OVERLAY] Loaded: {filename}")
+
+        except Exception as e:
+            print(f"[ERROR overlay] {e}")
+
+
     def get_ref_line(self, wavelength, tol=0.01):
 
         if not hasattr(self, "solar_df"):
@@ -400,6 +443,19 @@ class EW:
         # --------------------------------
         self.ax.plot(x, y, 'k-')
 
+        # overlays
+        for overlay in self.overlay_spectra:
+
+            y_overlay = overlay["interp_flux"][mask]
+
+            self.ax.plot(
+                x,
+                y_overlay,
+                color=overlay["color"],
+                alpha=0.8,
+                lw=1
+            )
+
         if self.ref_flux_interp is not None:
             y_ref = self.ref_flux_interp[mask]
             self.ax.plot(x, y_ref, 'r-', alpha=0.7)
@@ -461,7 +517,7 @@ class EW:
                     y_ref = np.polyval(coeffs, x_ref)
 
                     self.ax.plot(x_ref, y_ref, 'r-', lw=2, linestyle = (0, (5, 5)), label="Continuo ref")
-                    self.ax.plot([x1, x2], [y1, y2], 'bo', color = "blue")
+                    self.ax.plot([x1, x2], [y1, y2], 'o', color = "blue")
 
                     self.ax.legend()
 
@@ -513,13 +569,38 @@ class EW:
         # --------------------------------
         # INPUT PANEL (si está activo)
         # --------------------------------
+        label = ""
+
+        if self.input_type == "width":
+            label = "Width: "
+
+        elif self.input_type == "zoom":
+            label = "Wavelength: "
+
+        elif self.input_type == "overlay":
+            label = "Overlay spectrum: "
+
+        # -------------------------
+        # DELETE OVERLAY
+        # -------------------------
+        elif self.input_type == "delete_overlay":
+
+           label = "Delete spectrum: "
+
+
         if self.input_mode:
             self.ax.text(
-                0.02, 0.05,
-                self.input_text,
+                0.02,
+                0.03,
+                label + self.input_text,
                 transform=self.ax.transAxes,
                 fontsize=10,
-                bbox=dict(facecolor='white', alpha=0.9)
+                family="monospace",
+                bbox=dict(
+                    facecolor='yellow',
+                    edgecolor='black',
+                    alpha=0.85
+                )
             )
 
         # --------------------------------
@@ -531,9 +612,33 @@ class EW:
         self.ax.set_xlabel("")
         self.ax.set_ylabel("Flux")
 
-        self.ax_diff.set_xlabel("Wavelength [Å]")
+        # label eje X
+        if self.ref_flux_interp is not None:
+            self.ax.set_xlabel("")
+        else:
+            self.ax.set_xlabel("Wavelength [Å]")
 
-        plt.setp(self.ax.get_xticklabels(), visible=False)
+        if self.ref_flux_interp is not None:
+            plt.setp(self.ax.get_xticklabels(), visible=False)
+        else:
+            plt.setp(self.ax.get_xticklabels(), visible=True)
+
+
+        # lista overlays
+        if len(self.overlay_spectra) > 0:
+
+            overlay_text = "Overlays:\n"
+
+            for i, overlay in enumerate(self.overlay_spectra):
+                overlay_text += f"{i+1}) {overlay['name']}\n"
+
+            self.ax.text(
+                0.82, 0.75,
+                overlay_text,
+                transform=self.ax.transAxes,
+                fontsize=8,
+                bbox=dict(facecolor='white', alpha=0.7)
+            )
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
@@ -820,10 +925,61 @@ class EW:
                     txt = self.input_text.replace(",", " ").replace("width=", "")
                     parts = txt.split()
 
+
+                    # -------------------------
+                    # OVERLAY SPECTRUM
+                    # -------------------------
+                    if self.input_type == "overlay":
+
+                        filename = self.input_text.strip()
+
+                        self.add_overlay_spectrum(filename)
+
+                    # -------------------------
+                    # DELETE OVERLAY
+                    # -------------------------
+                    elif self.input_type == "delete_overlay":
+
+                        target = self.input_text.strip()
+
+                        removed = False
+
+                        # borrar por índice
+                        if target.isdigit():
+
+                            idx = int(target) - 1
+
+                            if 0 <= idx < len(self.overlay_spectra):
+
+                                removed_name = self.overlay_spectra[idx]["name"]
+
+                                del self.overlay_spectra[idx]
+
+                                print(f"[OVERLAY] Removed: {removed_name}")
+
+                                removed = True
+
+                        # borrar por nombre
+                        else:
+
+                            for overlay in self.overlay_spectra:
+
+                                if overlay["name"] == target:
+
+                                    self.overlay_spectra.remove(overlay)
+
+                                    print(f"[OVERLAY] Removed: {target}")
+
+                                    removed = True
+                                    break
+
+                        if not removed:
+                            print("[OVERLAY] Spectrum not found")
+
                     # -------------------------
                     # WIDTH MODE
                     # -------------------------
-                    if hasattr(self, "input_type") and self.input_type == "width":
+                    elif self.input_type == "width":
 
                         if len(parts) == 0:
                             raise ValueError
@@ -837,7 +993,7 @@ class EW:
                         print(f"[WIDTH TEMP] {w}")
 
                     # -------------------------
-                    # ZOOM MODE (tu código original)
+                    # ZOOM MODE
                     # -------------------------
                     else:
 
@@ -883,6 +1039,7 @@ class EW:
             self.index = min(len(self.line_centers)-1, self.index+1)
             self.temp_width = None
             self.show_zoom = False
+            self.overlay_spectra.clear()
             self.click_points.clear()
             self.show_line()
 
@@ -891,6 +1048,7 @@ class EW:
             self.index = max(0, self.index-1)
             self.temp_width = None
             self.show_zoom = False
+            self.overlay_spectra.clear()
             self.click_points.clear()
             self.show_line()
 
@@ -966,6 +1124,25 @@ class EW:
             self.show_line()
 
 
+
+        # agregar overlay spectrum
+        if event.key == "s" and self.explore_mode:
+
+            self.input_mode = True
+            self.input_text = ""
+            self.input_type = "overlay"
+
+            print("Overlay spectrum filename:")
+
+        
+        # borrar overlays
+        if event.key == "d" and self.explore_mode and not self.blending_mode:
+
+            self.input_mode = True
+            self.input_text = ""
+            self.input_type = "delete_overlay"
+
+            self.show_line()
 
 
 
@@ -1069,19 +1246,22 @@ class EW:
         self.fig.canvas.draw_idle()
 
 
-    @staticmethod
+    #@staticmethod
     def run():
+
         import sys
 
         # -------------------------
         # MODO ARGUMENTOS
         # -------------------------
         if len(sys.argv) >= 3:
+
             fits_file = sys.argv[1]
             csv_file = sys.argv[2]
 
             width = 1.5
             ref_csv = None
+            ref_spectrum = None
 
             if len(sys.argv) >= 4:
                 try:
@@ -1092,10 +1272,14 @@ class EW:
             if len(sys.argv) >= 5:
                 ref_csv = sys.argv[4]
 
+            if len(sys.argv) >= 6:
+                ref_spectrum = sys.argv[5]
+
             return EW(
-                fits_file,
-                csv_file,
+                fits_file=fits_file,
+                csv_file=csv_file,
                 ref_csv=ref_csv,
+                ref_spectrum=ref_spectrum,
                 width=width
             )
 
@@ -1112,7 +1296,6 @@ class EW:
             return None
 
         ref_csv = input("(optional) ref EW csv: ").strip() or None
-
         ref_spec = input("(optional) ref spectrum: ").strip() or None
 
         width_input = input("(optional) width (default=1.5): ").strip()
@@ -1129,50 +1312,11 @@ class EW:
         )
 
 
-    
+def main():
+    EW.run()
 
 
 if __name__ == "__main__":
-
-    # -------------------------
-    # MODO CON ARGUMENTOS
-    # -------------------------
-    if len(sys.argv) >= 3:
-
-        fits_file = sys.argv[1]
-        csv_file = sys.argv[2]
-
-        width = 1.5
-        ref_csv = None
-        ref_spectrum = None
-
-        # width
-        if len(sys.argv) >= 4:
-            try:
-                width = float(sys.argv[3])
-            except:
-                print("Invalid width → using default 1.5")
-
-        # CSV referencia
-        if len(sys.argv) >= 5:
-            ref_csv = sys.argv[4]
-
-        # espectro referencia
-        if len(sys.argv) >= 6:
-            ref_spectrum = sys.argv[5]
-
-        EW(
-            fits_file=fits_file,
-            csv_file=csv_file,
-            ref_csv=ref_csv,
-            ref_spectrum=ref_spectrum,
-            width=width
-        )
-
-    # -------------------------
-    # MODO INTERACTIVO
-    # -------------------------
-    else:
-        EW.run()
+    EW.run()
 
     
