@@ -2,6 +2,8 @@
 # Librerías
 # --------------------------------
 import numpy as np
+import matplotlib
+matplotlib.use("QtAgg")  # MacOSX backend has fatal ARC race condition
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
@@ -101,6 +103,7 @@ class EW:
         self.fig.canvas.mpl_connect("key_press_event", self.on_key)
         self.fig.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
 
+        plt.ion()
         plt.show()
 
 
@@ -403,8 +406,6 @@ class EW:
         # --------------------------------
         # CROSSHAIR
         # --------------------------------
-        self.v_line = self.ax.axvline(0, color='m', linestyle='--', linewidth=0.8, visible=False)
-        self.h_line = self.ax.axhline(0, color='m', linestyle='--', linewidth=0.8, visible=False)
 
 
         center = self.line_centers[self.index]
@@ -660,7 +661,7 @@ class EW:
             )
 
         self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
+        
 
 
     # --------------------------------
@@ -944,10 +945,15 @@ class EW:
 
         # guardar en PDF
         self.pdf.savefig(self.fig)
-        self.pdf._file.flush()
+
+        try:
+            self.pdf._file.flush()
+            os.fsync(self.pdf._file.fileno())
+        except:
+            pass
 
         self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
+        
 
 
     # --------------------------------
@@ -972,7 +978,7 @@ class EW:
 
         if self.input_mode:
 
-            if event.key == "enter":
+            if event.key in ["enter", "return"]:
                 try:
                     txt = self.input_text.replace(",", " ").replace("width=", "")
                     parts = txt.split()
@@ -1158,10 +1164,10 @@ class EW:
             self.ax.axvline(event.xdata, color="purple", ls="--")
 
         # ejecutar fit en blending
-        if event.key == "enter" and self.blending_mode:
+        if event.key in ["enter", "return"] and self.blending_mode:
             self.auto_fit()
             self.fig.canvas.draw_idle()
-            self.fig.canvas.flush_events()
+            
 
         # reset completo
         if event.key == "r":
@@ -1245,7 +1251,6 @@ class EW:
             plt.close()
 
         self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
 
 
     # --------------------------------
