@@ -77,10 +77,6 @@ class EW:
         self.ax2 = self.fig.add_axes([0.75, 0.10, 0.22, 0.82])
         self.ax2.set_visible(False)
 
-
-        self.v_line = self.ax.axvline(0, color='m', linestyle='--', visible=False)
-        self.h_line = self.ax.axhline(0, color='m', linestyle='--', visible=False)
-
         #Expolracion del Espectro
         self.explore_mode = False
         self.input_type = None
@@ -103,7 +99,7 @@ class EW:
         self.fig.canvas.mpl_connect("key_press_event", self.on_key)
         self.fig.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
 
-        plt.ion()
+        #plt.ion()
         plt.show()
 
 
@@ -407,6 +403,25 @@ class EW:
         # CROSSHAIR
         # --------------------------------
 
+        # recrear crosshair
+        self.v_line = self.ax.axvline(
+            0,
+            color='magenta',
+            linestyle='--',
+            lw=0.8,
+            visible=False,
+            zorder=100
+        )
+
+        self.h_line = self.ax.axhline(
+            0,
+            color='magenta',
+            linestyle='--',
+            lw=0.8,
+            visible=False,
+            zorder=100
+        )
+
 
         center = self.line_centers[self.index]
 
@@ -447,7 +462,7 @@ class EW:
         self.ax.plot(
             x,
             y,
-            color='deepskyblue',
+            color='blue',
             lw=1.3
         )
 
