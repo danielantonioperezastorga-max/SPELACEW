@@ -168,7 +168,7 @@ class EW:
         # --------------------------------
         self.csv_path = os.path.join(self.output_dir, "resultados.csv")
         self.pdf_path = os.path.join(self.output_dir, "resultados.pdf")
-        self.new_pdf_path = os.path.join(self.output_dir, "resultados_new.pdf")
+        
 
         # --------------------------------
         # CARGAR RESULTADOS PREVIOS (si existen)
@@ -187,7 +187,7 @@ class EW:
         # --------------------------------
         # PDF NUEVO (siempre temporal)
         # --------------------------------
-        self.pdf = PdfPages(self.new_pdf_path)
+        self.pdf = PdfPages(self.pdf_path)
 
     #una sola gaussiana
     def gaussian_absorption(self, x, A, mu, sigma):
@@ -422,6 +422,8 @@ class EW:
         x = self.wavelength[mask]
         y = self.flux[mask]
 
+        
+
         if self.ref_flux_interp is not None:
             y_ref = self.ref_flux_interp[mask]
 
@@ -441,7 +443,12 @@ class EW:
         # --------------------------------
         # PLOT PRINCIPAL
         # --------------------------------
-        self.ax.plot(x, y, 'k-')
+        self.ax.plot(
+            x,
+            y,
+            color='deepskyblue',
+            lw=1.3
+        )
 
         # overlays
         for overlay in self.overlay_spectra:
@@ -458,7 +465,13 @@ class EW:
 
         if self.ref_flux_interp is not None:
             y_ref = self.ref_flux_interp[mask]
-            self.ax.plot(x, y_ref, 'r-', alpha=0.7)
+            self.ax.plot(
+                x,
+                y_ref,
+                color='orange',
+                lw=1.2,
+                alpha=0.8
+            )
 
         
         self.ax_diff.clear()
@@ -467,7 +480,13 @@ class EW:
 
             y_ref = self.ref_flux_interp[mask]
 
-            self.ax.plot(x, y_ref, 'r-', alpha=0.7)
+            self.ax.plot(
+                x,
+                y_ref,
+                color='orange',
+                lw=1.2,
+                alpha=0.8
+            )
 
             diff = y_ref - y
 
@@ -819,6 +838,12 @@ class EW:
             "hpf": 0
         })
 
+        # --------------------------------
+        # AUTOSAVE CSV
+        # --------------------------------
+        df = pd.DataFrame(self.results)
+        df.to_csv(self.csv_path, index=False)
+
         print(f"[AUTO-SAVE] λ={self.line_centers[self.index]:.3f} EW={EW_target:.2f}")
 
         self.show_zoom = True
@@ -830,8 +855,20 @@ class EW:
 
         # gráfico principal
         self.ax.plot(x, y_norm, 'ko', ms=3)
-        self.ax.plot(x, model, 'r--')
-        self.ax.plot(x, continuum, 'b--')
+        self.ax.plot(
+            x,
+            model,
+            color='red',
+            linestyle='--',
+            lw=2
+        )
+        self.ax.plot(
+            x,
+            continuum,
+            color='black',
+            linestyle='--',
+            lw=1.5
+        )
 
 
         # --------------------------------
@@ -872,8 +909,22 @@ class EW:
 
         # AHORA sí puedes plotear
         self.ax2.plot(x_ext, y_ext, 'ko', ms=3, label="Data")
-        self.ax2.plot(x_ext, continuum_ext, 'b--', lw=1.5, label="Continuo")
-        self.ax2.plot(x, model * continuum, 'hotpink', label="Fit")
+        self.ax2.plot(
+            x_ext,
+            continuum_ext,
+            color='black',
+            linestyle='--',
+            lw=1.5,
+            label="Continuo"
+        )
+        self.ax2.plot(
+            x,
+            model * continuum,
+            color='red',
+            linestyle='--',
+            lw=2,
+            label="Fit"
+        )
 
         self.ax2.set_xlabel("Wavelength [Å]")
         self.ax2.set_ylabel("Flux")
@@ -893,6 +944,7 @@ class EW:
 
         # guardar en PDF
         self.pdf.savefig(self.fig)
+        self.pdf._file.flush()
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
@@ -1039,6 +1091,8 @@ class EW:
             self.index = min(len(self.line_centers)-1, self.index+1)
             self.temp_width = None
             self.show_zoom = False
+            self.blending_mode = False
+            self.blend_centers.clear()
             self.overlay_spectra.clear()
             self.click_points.clear()
             self.show_line()
@@ -1048,6 +1102,8 @@ class EW:
             self.index = max(0, self.index-1)
             self.temp_width = None
             self.show_zoom = False
+            self.blending_mode = False
+            self.blend_centers.clear()
             self.overlay_spectra.clear()
             self.click_points.clear()
             self.show_line()
@@ -1177,50 +1233,15 @@ class EW:
         # cerrar
         if event.key == "q":
 
-            # -----------------------------
-            # GUARDAR CSV (append lógico)
-            # -----------------------------
+            # guardar CSV final
             df = pd.DataFrame(self.results)
             df.to_csv(self.csv_path, index=False)
 
+            # cerrar PDF
             self.pdf.close()
 
-            # -----------------------------
-            # MERGE PDF (acumular sesiones)
-            # -----------------------------
-            try:
-                from pypdf import PdfWriter, PdfReader
-
-                if os.path.exists(self.pdf_path):
-
-                    writer = PdfWriter()
-
-                    # PDF antiguo
-                    reader_old = PdfReader(self.pdf_path)
-                    for page in reader_old.pages:
-                        writer.add_page(page)
-
-                    # PDF nuevo
-                    reader_new = PdfReader(self.new_pdf_path)
-                    for page in reader_new.pages:
-                        writer.add_page(page)
-
-                    with open(self.pdf_path, "wb") as f:
-                        writer.write(f)
-
-                    os.remove(self.new_pdf_path)
-
-                    print("[PDF] Se agregó la sesión al PDF existente")
-
-                else:
-                    os.rename(self.new_pdf_path, self.pdf_path)
-                    print("[PDF] PDF creado")
-
-            except Exception as e:
-                print("[WARNING] Falló merge PDF:", e)
-                print("Se mantiene resultados_new.pdf")
-
             print(f"Resultados guardados en {self.csv_path}")
+
             plt.close()
 
         self.fig.canvas.draw_idle()
