@@ -84,6 +84,7 @@ class EW:
         self.zoom_xmin = None
         self.zoom_xmax = None
         self.temp_width = None
+        self._drawing = False
 
         self.input_mode = False
         self.input_text = ""
@@ -100,7 +101,7 @@ class EW:
         self.fig.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
 
         #plt.ion()
-        plt.show()
+        plt.show(block=True)
 
 
 
@@ -675,7 +676,9 @@ class EW:
                 bbox=dict(facecolor='white', alpha=0.7)
             )
 
+        self._drawing = True
         self.fig.canvas.draw_idle()
+        self._drawing = False
         
 
 
@@ -701,6 +704,10 @@ class EW:
         mask = (self.wavelength >= xmin) & (self.wavelength <= xmax)
         x = self.wavelength[mask]
         y = self.flux[mask]
+
+        if len(x) < 4:
+            print(f"[WARNING] λ={self.line_centers[self.index]:.3f} outside spectrum range — skipping.")
+            return
 
         # calcula continuo
         continuum = self.build_continuum(x , self.click_points)
@@ -870,7 +877,7 @@ class EW:
                 txt.remove()
 
         # gráfico principal
-        self.ax.plot(x, y_norm, 'ko', ms=3)
+        self.ax.plot(x, y_norm*continuum, 'ko', ms=3)
         self.ax.plot(
             x,
             model,
@@ -895,12 +902,11 @@ class EW:
         rect_y_top = 1  # continuo normalizado
 
         self.ax.fill_between(
-            rect_x,
-            rect_y_bottom,
-            rect_y_top,
+            x,
+            y_norm * continuum,
+            continuum,
             color='cyan',
-            alpha=0.15,
-            step='mid'
+            alpha=0.3
         )
 
 
@@ -958,14 +964,23 @@ class EW:
             bbox=dict(facecolor="white", alpha=0.8)
         )
 
-        # guardar en PDF
-        self.pdf.savefig(self.fig)
+        # --------------------------------
+        # GUARDAR PDF (backend seguro)
+        # --------------------------------
+        from matplotlib.backends.backend_pdf import FigureCanvasPdf
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
-        try:
-            self.pdf._file.flush()
-            os.fsync(self.pdf._file.fileno())
-        except:
-            pass
+        qt_canvas = self.fig.canvas
+
+        # cambiar temporalmente a canvas PDF
+        pdf_canvas = FigureCanvasPdf(self.fig)
+
+        self.pdf.savefig(self.fig, bbox_inches='tight')
+
+        # restaurar canvas Qt interactivo
+        FigureCanvasQTAgg(self.fig)
+        self.fig.canvas = qt_canvas
+        qt_canvas.figure = self.fig
 
         self.fig.canvas.draw_idle()
         
@@ -1138,6 +1153,7 @@ class EW:
 
             if len(self.click_points) >= 2:
                 self.auto_fit()
+                self.click_points.clear()
 
             if event.xdata is None or event.ydata is None:
                 return
@@ -1181,7 +1197,9 @@ class EW:
         # ejecutar fit en blending
         if event.key in ["enter", "return"] and self.blending_mode:
             self.auto_fit()
+            self._drawing = True
             self.fig.canvas.draw_idle()
+            self._drawing = False
             
 
         # reset completo
@@ -1264,8 +1282,11 @@ class EW:
             print(f"Resultados guardados en {self.csv_path}")
 
             plt.close()
+            return
 
+        self._drawing = True
         self.fig.canvas.draw_idle()
+        self._drawing = False
 
 
     # --------------------------------
@@ -1284,7 +1305,9 @@ class EW:
             self.v_line.set_visible(False)
             self.h_line.set_visible(False)
 
+        
         self.fig.canvas.draw_idle()
+        
 
 
     #@staticmethod
