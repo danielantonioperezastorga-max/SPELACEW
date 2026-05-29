@@ -579,7 +579,17 @@ class EW:
         # --------------------------------
         # TEXTO DE MODO
         # --------------------------------
-        mode_text = "BLENDING" if self.blending_mode else "NORMAL"
+        mode_list = []
+
+        if self.blending_mode:
+            mode_list.append("BLENDING")
+        else:
+            mode_list.append("NORMAL")
+
+        if self.explore_mode:
+            mode_list.append("EXPLORATION")
+
+        mode_text = " | ".join(mode_list)
 
         self.ax.text(
             0.02, 0.95,
@@ -683,7 +693,7 @@ class EW:
 
 
     # --------------------------------
-    # FIT
+    # FIT(talvez use voigth en el futuro, me llama XD)
     # --------------------------------
     # Hace el ajuste automático (normal o blending)
     def auto_fit(self):
@@ -769,6 +779,7 @@ class EW:
             sigma_fit = sigmas[target_idx]
 
             FWHM = self.compute_fwhm(sigma_fit)
+
 
             text = ""
             for i in range(len(popt)//3):
@@ -910,13 +921,11 @@ class EW:
         )
 
 
+        
         # --------------------------------
-        # ZOOM
+        # ZOOM (config para x)
         # --------------------------------
-        # --------------------------------
-        # ZOOM
-        # --------------------------------
-        x_margin = 0.3
+        x_margin = 0.1
         mask_ext = (self.wavelength >= xmin - x_margin) & (self.wavelength <= xmax + x_margin)
 
         x_ext = self.wavelength[mask_ext]
@@ -952,10 +961,33 @@ class EW:
         self.ax2.set_ylabel("Flux")
 
         self.ax2.set_xlim(xmin - x_margin, xmax + x_margin)
+
+        # --------------------------------
+        # AJUSTE PARA ZOOM (QUEDO BKN)
+        # --------------------------------
+        y_all = np.concatenate([
+            y_ext,
+            continuum_ext,
+            model * continuum
+        ])
+
+        ymin_zoom = np.min(y_all)
+        ymax_zoom = np.max(y_all)
+
+        y_margin = 0.05 * (ymax_zoom - ymin_zoom)
+
+        self.ax2.set_ylim(
+            ymin_zoom - y_margin,
+            ymax_zoom + y_margin
+        )
+
+
+
+        #AJUSTAR EL ZOOM "+-"
         self.ax2.set_title("Zoom")
         self.ax2.grid()
 
-
+        
         self.ax.text(
             0.02, 0.02,
             text + f"\nχ²={chi2:.2f}",
@@ -964,9 +996,9 @@ class EW:
             bbox=dict(facecolor="white", alpha=0.8)
         )
 
-        # --------------------------------
+        
         # GUARDAR PDF (backend seguro)
-        # --------------------------------
+        
         from matplotlib.backends.backend_pdf import FigureCanvasPdf
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
@@ -986,9 +1018,7 @@ class EW:
         
 
 
-    # --------------------------------
     # EVENTOS (teclado)
-    # --------------------------------
     def on_key(self, event):
 
         if self.input_mode and event.key not in ["enter"]:
@@ -1228,6 +1258,7 @@ class EW:
             self.input_type = "overlay"
 
             print("Overlay spectrum filename:")
+            self.show_line()
 
         
         # borrar overlays
@@ -1254,12 +1285,14 @@ class EW:
             self.input_text = ""
             self.input_type = "zoom"
             print("Input: λ   o   xmin xmax")
+            self.show_line()
 
         if event.key == "w" and self.explore_mode:
             self.input_mode = True
             self.input_text = "width="
             self.input_type = "width"
             print("Input width:")
+            self.show_line()
 
 
         if event.key == "a":
