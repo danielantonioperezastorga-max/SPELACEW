@@ -693,7 +693,7 @@ class EW:
 
 
     # --------------------------------
-    # FIT(talvez use voigth en el futuro, me llama XD)
+    # FIT
     # --------------------------------
     # Hace el ajuste automático (normal o blending)
     def auto_fit(self):
@@ -921,9 +921,11 @@ class EW:
         )
 
 
-        
         # --------------------------------
-        # ZOOM (config para x)
+        # ZOOM
+        # --------------------------------
+        # --------------------------------
+        # ZOOM
         # --------------------------------
         x_margin = 0.1
         mask_ext = (self.wavelength >= xmin - x_margin) & (self.wavelength <= xmax + x_margin)
@@ -963,7 +965,7 @@ class EW:
         self.ax2.set_xlim(xmin - x_margin, xmax + x_margin)
 
         # --------------------------------
-        # AJUSTE PARA ZOOM (QUEDO BKN)
+        # AJUSTE DINÁMICO EN Y PARA ZOOM
         # --------------------------------
         y_all = np.concatenate([
             y_ext,
@@ -996,9 +998,9 @@ class EW:
             bbox=dict(facecolor="white", alpha=0.8)
         )
 
-        
+        # --------------------------------
         # GUARDAR PDF (backend seguro)
-        
+        # --------------------------------
         from matplotlib.backends.backend_pdf import FigureCanvasPdf
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
@@ -1018,7 +1020,9 @@ class EW:
         
 
 
+    # --------------------------------
     # EVENTOS (teclado)
+    # --------------------------------
     def on_key(self, event):
 
         if self.input_mode and event.key not in ["enter"]:
