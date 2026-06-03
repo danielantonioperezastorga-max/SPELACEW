@@ -14,6 +14,9 @@ from PyAstronomy import pyasl
 import sys
 from pypdf import PdfWriter, PdfReader
 from matplotlib.gridspec import GridSpec
+from matplotlib.backends.backend_pdf import FigureCanvasPdf
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+
 
 
 
@@ -70,8 +73,7 @@ class EW:
         self.ax = self.fig.add_axes([0.07, 0.30, 0.90, 0.62])
 
         self.ax_diff = self.fig.add_axes(
-            [0.07, 0.10, 0.90, 0.16],
-            sharex=self.ax
+            [0.07, 0.10, 0.90, 0.16]
         )
 
         self.ax2 = self.fig.add_axes([0.75, 0.10, 0.22, 0.82])
@@ -85,6 +87,7 @@ class EW:
         self.zoom_xmax = None
         self.temp_width = None
         self._drawing = False
+        self._results_text = None
 
         self.input_mode = False
         self.input_text = ""
@@ -184,10 +187,22 @@ class EW:
         else:
             self.results = []
 
+
+
+        self.tmp_pdf_dir = os.path.join(
+            self.output_dir,
+            "tmp_pdf"
+        )
+
+        os.makedirs(
+            self.tmp_pdf_dir,
+            exist_ok=True
+        )
+
         # --------------------------------
         # PDF NUEVO (siempre temporal)
         # --------------------------------
-        self.pdf = PdfPages(self.pdf_path)
+        
 
     #una sola gaussiana
     def gaussian_absorption(self, x, A, mu, sigma):
@@ -737,9 +752,9 @@ class EW:
             lower, upper = [], []
 
             for mu in self.blend_centers:
-                p0 += [0.5, mu, 0.1]
-                lower += [0, mu-0.2, 0.01]
-                upper += [1.5, mu+0.2, 0.5]
+                p0 += [0.5, mu, 0.05]
+                lower += [0, mu-0.05, 0.001]
+                upper += [1.5, mu+0.05, 0.3]
 
             try:
                 popt,_ = curve_fit(self.multi_gaussian, x, y_norm, p0=p0, bounds=(lower, upper))
@@ -768,7 +783,7 @@ class EW:
                 mus.append(mu)
                 sigmas.append(sigma)
 
-                print(f"Comp {i+1}: μ={mu:.4f}, EW={EW_i:.2f} mÅ")
+                print(f"Comp {i+1}: λ={mu:.4f}, EW={EW_i:.2f} mÅ")
 
             target_center = self.line_centers[self.index]
             distances = [abs(mu - target_center) for mu in mus]
@@ -783,7 +798,7 @@ class EW:
 
             text = ""
             for i in range(len(popt)//3):
-                text += f"{i+1}: μ={mus[i]:.4f}, EW={EW_components[i]:.2f}\n"
+                text += f"{i+1}: λ={mus[i]:.4f}, EW={EW_components[i]:.2f}\n"
 
             text += (
                 f"\n\nEW(target) = {EW_target:.2f} mÅ\n"
@@ -891,7 +906,7 @@ class EW:
         self.ax.plot(x, y_norm*continuum, 'ko', ms=3)
         self.ax.plot(
             x,
-            model,
+            model*continuum,
             color='red',
             linestyle='--',
             lw=2
@@ -940,18 +955,27 @@ class EW:
 
         self.ax2.clear()
 
-        # AHORA sí puedes plotear
-        self.ax2.plot(x_ext, y_ext, 'ko', ms=3, label="Data")
+        lc = self.line_centers[self.index]
+
         self.ax2.plot(
-            x_ext,
+            x_ext - lc,
+            y_ext,
+            'ko',
+            ms=3,
+            label="Data"
+        )
+
+        self.ax2.plot(
+            x_ext - lc,
             continuum_ext,
             color='black',
             linestyle='--',
             lw=1.5,
             label="Continuo"
         )
+
         self.ax2.plot(
-            x,
+            x - lc,
             model * continuum,
             color='red',
             linestyle='--',
@@ -959,10 +983,15 @@ class EW:
             label="Fit"
         )
 
-        self.ax2.set_xlabel("Wavelength [Å]")
+        self.ax2.set_xlabel(f"Δλ from {lc:.3f} Å")
         self.ax2.set_ylabel("Flux")
 
-        self.ax2.set_xlim(xmin - x_margin, xmax + x_margin)
+        self.ax2.ticklabel_format(useOffset=False)
+
+        self.ax2.set_xlim(
+            (xmin - x_margin) - lc,
+            (xmax + x_margin) - lc
+        )
 
         # --------------------------------
         # AJUSTE DINÁMICO EN Y PARA ZOOM
@@ -998,25 +1027,46 @@ class EW:
             bbox=dict(facecolor="white", alpha=0.8)
         )
 
+
+        pdf_name = os.path.join(
+            self.tmp_pdf_dir,
+            f"{self.index:04d}_{self.line_centers[self.index]:.3f}.pdf"
+        )
+
+        self.fig.savefig(
+            pdf_name,
+            bbox_inches="tight"
+        )
+
         # --------------------------------
         # GUARDAR PDF (backend seguro)
         # --------------------------------
-        from matplotlib.backends.backend_pdf import FigureCanvasPdf
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        
 
-        qt_canvas = self.fig.canvas
 
-        # cambiar temporalmente a canvas PDF
-        pdf_canvas = FigureCanvasPdf(self.fig)
+    def build_final_pdf(self):
 
-        self.pdf.savefig(self.fig, bbox_inches='tight')
+        writer = PdfWriter()
 
-        # restaurar canvas Qt interactivo
-        FigureCanvasQTAgg(self.fig)
-        self.fig.canvas = qt_canvas
-        qt_canvas.figure = self.fig
+        pdf_files = sorted(
+            [
+                os.path.join(self.tmp_pdf_dir, f)
+                for f in os.listdir(self.tmp_pdf_dir)
+                if f.endswith(".pdf")
+            ]
+        )
 
-        self.fig.canvas.draw_idle()
+        for pdf_file in pdf_files:
+
+            reader = PdfReader(pdf_file)
+
+            for page in reader.pages:
+                writer.add_page(page)
+
+        with open(self.pdf_path, "wb") as f:
+            writer.write(f)
+
+        print(f"[PDF] Created: {self.pdf_path}")
         
 
 
@@ -1314,7 +1364,7 @@ class EW:
             df.to_csv(self.csv_path, index=False)
 
             # cerrar PDF
-            self.pdf.close()
+            self.build_final_pdf()
 
             print(f"Resultados guardados en {self.csv_path}")
 
