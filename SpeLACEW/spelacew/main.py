@@ -8,14 +8,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from datetime import datetime
-from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 from PyAstronomy import pyasl
 import sys
 from pypdf import PdfWriter, PdfReader
-from matplotlib.gridspec import GridSpec
-from matplotlib.backends.backend_pdf import FigureCanvasPdf
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from scipy.interpolate import interp1d
 
 
 
@@ -160,10 +157,10 @@ class EW:
         self.line_data = pd.read_csv(self.csv_file)
         self.line_centers = self.line_data.iloc[:,0].values
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        #today = datetime.now().strftime("%Y-%m-%d")
         base = os.path.splitext(os.path.basename(self.fits_file))[0]
 
-        self.output_dir = f"ajustes_{base}_{today}"
+        self.output_dir = f"ajustes_{base}"
         os.makedirs(self.output_dir, exist_ok=True)
 
         # --------------------------------
@@ -454,6 +451,36 @@ class EW:
         x = self.wavelength[mask]
         y = self.flux[mask]
 
+
+        #Aca cuarto intento de interpolacion :(
+
+        f_interp = interp1d(
+            x,
+            y,
+            kind="linear"
+        )
+
+        self.x_interp = np.linspace(
+            x[0],
+            x[-1],
+            5000,
+            endpoint=True
+        )
+
+        self.y_interp = f_interp(
+            self.x_interp
+        )
+
+        # --------------------------------
+        # PLOT PRINCIPAL
+        # --------------------------------
+        self.ax.plot(
+            x,
+            y,
+            lw=1.3,
+            color="blue"
+        )
+
         
 
         if self.ref_flux_interp is not None:
@@ -472,16 +499,6 @@ class EW:
         )
 
 
-        # --------------------------------
-        # PLOT PRINCIPAL
-        # --------------------------------
-        self.ax.plot(
-            x,
-            y,
-            color='blue',
-            lw=1.3
-        )
-
         # overlays
         for overlay in self.overlay_spectra:
 
@@ -493,16 +510,6 @@ class EW:
                 color=overlay["color"],
                 alpha=0.8,
                 lw=1
-            )
-
-        if self.ref_flux_interp is not None:
-            y_ref = self.ref_flux_interp[mask]
-            self.ax.plot(
-                x,
-                y_ref,
-                color='orange',
-                lw=1.2,
-                alpha=0.8
             )
 
         
@@ -526,7 +533,7 @@ class EW:
 
             self.ax_diff.axhline(
                 0,
-                color='red',
+                color='black',
                 linestyle='--',
                 linewidth=1
             )
@@ -567,18 +574,47 @@ class EW:
                     coeffs = np.polyfit([x1, x2], [y1, y2], 1)
                     y_ref = np.polyval(coeffs, x_ref)
 
-                    self.ax.plot(x_ref, y_ref, 'r-', lw=2, linestyle = (0, (5, 5)), label="Continuo ref")
-                    self.ax.plot([x1, x2], [y1, y2], 'o', color = "blue")
+                    # continuo de referencia
+                    self.ax.plot(
+                        x_ref,
+                        y_ref,
+                        'r-',
+                        lw=2,
+                        linestyle=(0, (5, 5)),
+                        label="Continuo ref"
+                    )
+
+                    # base del gráfico
+                    y_base = self.ax.get_ylim()[0]
+
+                    # líneas verticales
+                    self.ax.vlines(
+                        x1,
+                        y_base,
+                        y1,
+                        colors='black',
+                        linestyles='--',
+                        linewidth=1.5
+                    )
+
+                    self.ax.vlines(
+                        x2,
+                        y_base,
+                        y2,
+                        colors='black',
+                        linestyles='--',
+                        linewidth=1.5
+                    )
+
+                    # región sombreada
+                    self.ax.fill(
+                        [x1, x1, x2, x2],
+                        [y_base, y1, y2, y_base],
+                        color='green',
+                        alpha=0.1
+                    )
 
                     self.ax.legend()
-
-                    self.ax.text(
-                        0.75, 0.9,
-                        "Ref",
-                        transform=self.ax.transAxes,
-                        color="red",
-                        fontsize=10
-                    )
 
 
 
@@ -704,6 +740,16 @@ class EW:
         self._drawing = True
         self.fig.canvas.draw_idle()
         self._drawing = False
+
+
+
+    def snap_to_interp(self, x_click):
+
+        idx = np.argmin(
+            np.abs(self.x_interp - x_click)
+        )
+
+        return idx
         
 
 
@@ -726,9 +772,52 @@ class EW:
         x1, x2 = self.click_points[0][0], self.click_points[1][0]
         xmin, xmax = min(x1,x2), max(x1,x2)
 
-        mask = (self.wavelength >= xmin) & (self.wavelength <= xmax)
-        x = self.wavelength[mask]
-        y = self.flux[mask]
+        # -------------------------
+        # PUNTOS REALES
+        # -------------------------
+        mask = (
+            (self.wavelength >= xmin) &
+            (self.wavelength <= xmax)
+        )
+
+        x_real = self.wavelength[mask]
+        y_real = self.flux[mask]
+
+        # -------------------------
+        # BORDES INTERPOLADOS
+        # -------------------------
+        ymin = np.interp(
+            xmin,
+            self.wavelength,
+            self.flux
+        )
+
+        ymax = np.interp(
+            xmax,
+            self.wavelength,
+            self.flux
+        )
+
+        # -------------------------
+        # CONJUNTO HÍBRIDO
+        # -------------------------
+        x = np.concatenate([
+            [xmin],
+            x_real,
+            [xmax]
+        ])
+
+        y = np.concatenate([
+            [ymin],
+            y_real,
+            [ymax]
+        ])
+
+        # ordenar por seguridad
+        order = np.argsort(x)
+
+        x = x[order]
+        y = y[order]
 
         if len(x) < 4:
             print(f"[WARNING] λ={self.line_centers[self.index]:.3f} outside spectrum range — skipping.")
@@ -833,8 +922,10 @@ class EW:
             #EW_target = np.trapezoid(1 - y_norm, x) * 1000
             EW_target = self.compute_area(A_fit, sigma_fit) * 1000
 
+            line_center = self.line_centers[self.index]
+
             text = (
-                f"μ = {mu_fit:.4f} Å\n"
+                f"λ_fit  = {mu_fit:.4f} Å\n"
                 f"EW = {EW_target:.2f} mÅ\n"
                 f"FWHM = {FWHM:.3f} Å"
             )
@@ -865,12 +956,14 @@ class EW:
         if hasattr(self, "solar_EW_map"):
             ew_sun = self.get_closest_ew(self.line_centers[self.index])
 
+        # eliminar medición previa de esta línea
         self.results = [
             r for r in self.results
             if r["wavelength"] != self.line_centers[self.index]
         ]
 
-        self.results.append({
+        # guardar resultados
+        result = {
             "wavelength": self.line_centers[self.index],
             "wave_left": xmin,
             "wave_right": xmax,
@@ -879,13 +972,18 @@ class EW:
             "element": element,
             "species": species,
             "ep": ep,
-            "gf": gf,
-            "ew_ref": ew_sun,
-            "ew": EW_target,
-            "FWHM": FWHM,
-            "Chi2R": chi2,
-            "hpf": 0
-        })
+            "gf": gf
+        }
+
+        if hasattr(self, "solar_EW_map"):
+            result["ew_Sun"] = ew_sun
+
+        result["ew_star"] = EW_target
+        result["FWHM"] = FWHM
+        result["Chi2R"] = chi2
+        result["hpf"] = 0
+
+        self.results.append(result)
 
         # --------------------------------
         # AUTOSAVE CSV
@@ -904,6 +1002,12 @@ class EW:
 
         # gráfico principal
         self.ax.plot(x, y_norm*continuum, 'ko', ms=3)
+        self.ax.plot(
+            x,
+            y_norm*continuum,
+            color='black',
+            lw=1
+        )
         self.ax.plot(
             x,
             model*continuum,
@@ -1230,17 +1334,28 @@ class EW:
 
         # selección de región (modo normal)
         if event.key == "k" and not self.blending_mode:
-            if event.xdata is None or event.ydata is None:
+
+            if event.xdata is None:
                 return
-            self.click_points.append((event.xdata, event.ydata))
-            self.ax.plot(event.xdata, event.ydata, "go")
+
+            idx = self.snap_to_interp(event.xdata)
+
+            x_snap = self.x_interp[idx]
+
+            self.click_points.append(
+                (x_snap, event.ydata)
+            )
+
+            self.ax.plot(
+                x_snap,
+                event.ydata,
+                "go"
+            )
+
 
             if len(self.click_points) >= 2:
                 self.auto_fit()
                 self.click_points.clear()
-
-            if event.xdata is None or event.ydata is None:
-                return
 
         # activar/desactivar blending
         if event.key == "b":
@@ -1253,30 +1368,51 @@ class EW:
 
         # definir región de blending
         if event.key == "d" and self.blending_mode:
+
             if event.xdata is None or event.ydata is None:
                 return
-            self.click_points.append((event.xdata, event.ydata))
-            self.ax.plot(event.xdata, event.ydata, "go")
+
+            idx = self.snap_to_interp(event.xdata)
+
+            x_snap = self.x_interp[idx]
+
+            self.click_points.append(
+                (x_snap, event.ydata)
+            )
+
+            self.ax.plot(
+                x_snap,
+                event.ydata,
+                "go"
+            )
 
             if len(self.click_points) == 2:
+
                 x1, x2 = self.click_points[0][0], self.click_points[1][0]
-                xmin, xmax = min(x1,x2), max(x1,x2)
+
+                xmin, xmax = min(x1, x2), max(x1, x2)
 
                 self.ax.axvline(xmin, color='red')
                 self.ax.axvline(xmax, color='red')
                 self.ax.axvspan(xmin, xmax, color='red', alpha=0.1)
 
-            if event.xdata is None or event.ydata is None:
-                return
-
         # agregar centros de líneas en blending
         if event.key == "g" and self.blending_mode:
 
-            if event.xdata is None or event.ydata is None:
+            if event.xdata is None:
                 return
 
-            self.blend_centers.append(event.xdata)
-            self.ax.axvline(event.xdata, color="purple", ls="--")
+            idx = self.snap_to_interp(event.xdata)
+
+            x_snap = self.x_interp[idx]
+
+            self.blend_centers.append(x_snap)
+
+            self.ax.axvline(
+                x_snap,
+                color="purple",
+                ls="--"
+            )
 
         # ejecutar fit en blending
         if event.key in ["enter", "return"] and self.blending_mode:
@@ -1399,8 +1535,6 @@ class EW:
 
     #@staticmethod
     def run():
-
-        import sys
 
         # -------------------------
         # MODO ARGUMENTOS
