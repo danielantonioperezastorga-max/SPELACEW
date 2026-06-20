@@ -21,16 +21,14 @@ class EW:
     def __init__(
         self,
         fits_file,
-        csv_file,
         ref_csv=None,
         ref_spectrum=None,
         width=1.5
     ):
 
         self.fits_file = fits_file
-        self.csv_file = csv_file
-        self.width = width
         self.ref_csv = ref_csv
+        self.width = width
         self.ref_spectrum = ref_spectrum
 
         # datos
@@ -60,6 +58,8 @@ class EW:
         self.blending_mode = False
         self.blend_centers = []
         self.results = []
+
+        self.show_reference_guide = True
 
         # figura
         self.show_zoom = False
@@ -154,8 +154,9 @@ class EW:
             )
 
         
-        self.line_data = pd.read_csv(self.csv_file)
-        self.line_centers = self.line_data.iloc[:,0].values
+        self.line_data = pd.read_csv(self.ref_csv)
+
+        self.line_centers = self.line_data["wavelength"].values
 
         #today = datetime.now().strftime("%Y-%m-%d")
         base = os.path.splitext(os.path.basename(self.fits_file))[0]
@@ -478,7 +479,8 @@ class EW:
             x,
             y,
             lw=1.3,
-            color="blue"
+            color="blue",
+            label="Star"
         )
 
         
@@ -491,11 +493,16 @@ class EW:
         width = self.temp_width if self.temp_width is not None else self.width
 
         self.ax.text(
-            0.02, 0.88,
-            f"Width: {width:.2f}",
+            0.02, 0.985,          
+            f"Width: {width:.2f}",   
             transform=self.ax.transAxes,
-            fontsize=9,
-            bbox=dict(facecolor='white', alpha=0.6)
+            fontsize=9,          
+            verticalalignment='top',
+            bbox=dict(
+                facecolor='white',
+                alpha=0.6,
+                pad=1            
+            )
         )
 
 
@@ -524,7 +531,8 @@ class EW:
                 y_ref,
                 color='orange',
                 lw=1.2,
-                alpha=0.8
+                alpha=0.8,
+                label="Reference"
             )
 
             diff = y_ref - y
@@ -535,7 +543,7 @@ class EW:
                 0,
                 color='black',
                 linestyle='--',
-                linewidth=1
+                linewidth=0.7
             )
 
             self.ax_diff.set_xlabel("Wavelength [Å]")
@@ -556,7 +564,7 @@ class EW:
         # --------------------------------
         # CONTINUO DE REFERENCIA
         # --------------------------------
-        if hasattr(self, "solar_df"):
+        if self.show_reference_guide and hasattr(self, "solar_df"):
 
             ref_row = self.get_ref_line(center)
 
@@ -579,7 +587,7 @@ class EW:
                         x_ref,
                         y_ref,
                         'r-',
-                        lw=2,
+                        lw=0.8,
                         linestyle=(0, (5, 5)),
                         label="Continuo ref"
                     )
@@ -594,7 +602,7 @@ class EW:
                         y1,
                         colors='black',
                         linestyles='--',
-                        linewidth=1.5
+                        linewidth=1
                     )
 
                     self.ax.vlines(
@@ -603,7 +611,7 @@ class EW:
                         y2,
                         colors='black',
                         linestyles='--',
-                        linewidth=1.5
+                        linewidth=1
                     )
 
                     # región sombreada
@@ -614,8 +622,14 @@ class EW:
                         alpha=0.1
                     )
 
-                    self.ax.legend()
+                handles, labels = self.ax.get_legend_handles_labels()
 
+                if handles:
+                    self.ax.legend(
+                        loc="upper right",
+                        fontsize=8,
+                        framealpha=0.7
+                    )
 
 
         # línea central SIEMPRE visible
@@ -625,7 +639,7 @@ class EW:
         self.ax.set_xlim(xmin, xmax)
 
         if len(y) > 0:
-            self.ax.set_ylim(np.min(y)*0.98, np.max(y) + 0.1)
+            self.ax.set_ylim(np.min(y)*0.98, np.max(y) + 0.1) 
 
         # --------------------------------
         # TEXTO DE MODO
@@ -646,9 +660,13 @@ class EW:
             0.02, 0.95,
             f"Modo: {mode_text}",
             transform=self.ax.transAxes,
-            fontsize=10,
+            fontsize=8,   
             verticalalignment='top',
-            bbox=dict(facecolor='white', alpha=0.7)
+            bbox=dict(
+                facecolor='white',
+                alpha=0.6,  
+                pad=2       
+            )
         )
 
         # --------------------------------
@@ -657,10 +675,14 @@ class EW:
         if self.zoom_active:
             self.ax.text(
                 0.02, 0.81,
-                f"ZOOM: {xmin:.2f} - {xmax:.2f}",
+                f"ZOOM: {xmin:.1f} - {xmax:.1f}",
                 transform=self.ax.transAxes,
-                fontsize=9,
-                bbox=dict(facecolor='yellow', alpha=0.5)
+                fontsize=7,   # ↓ más pequeño aún
+                bbox=dict(
+                    facecolor='yellow',
+                    alpha=0.4,
+                    pad=2
+                )
             )
 
         # --------------------------------
@@ -691,7 +713,7 @@ class EW:
                 0.03,
                 label + self.input_text,
                 transform=self.ax.transAxes,
-                fontsize=10,
+                fontsize=8,
                 family="monospace",
                 bbox=dict(
                     facecolor='yellow',
@@ -993,6 +1015,8 @@ class EW:
 
         print(f"[AUTO-SAVE] λ={self.line_centers[self.index]:.3f} EW={EW_target:.2f}")
 
+        self.show_reference_guide = False
+
         self.show_zoom = True
         self.show_line()
 
@@ -1013,14 +1037,14 @@ class EW:
             model*continuum,
             color='red',
             linestyle='--',
-            lw=2
+            lw=1
         )
         self.ax.plot(
             x,
             continuum,
             color='black',
             linestyle='--',
-            lw=1.5
+            lw=1.2
         )
 
 
@@ -1315,6 +1339,9 @@ class EW:
             self.index = min(len(self.line_centers)-1, self.index+1)
             self.temp_width = None
             self.show_zoom = False
+
+            self.show_reference_guide = True
+
             self.blending_mode = False
             self.blend_centers.clear()
             self.overlay_spectra.clear()
@@ -1326,6 +1353,9 @@ class EW:
             self.index = max(0, self.index-1)
             self.temp_width = None
             self.show_zoom = False
+
+            self.show_reference_guide = True
+
             self.blending_mode = False
             self.blend_centers.clear()
             self.overlay_spectra.clear()
@@ -1428,6 +1458,8 @@ class EW:
             self.blend_centers.clear()
             self.show_zoom = False
             self.blending_mode = False
+
+            self.show_reference_guide = True
 
 
             self.temp_width = None
@@ -1542,10 +1574,9 @@ class EW:
         if len(sys.argv) >= 3:
 
             fits_file = sys.argv[1]
-            csv_file = sys.argv[2]
+            ref_csv = sys.argv[2]
 
             width = 1.5
-            ref_csv = None
             ref_spectrum = None
 
             if len(sys.argv) >= 4:
@@ -1555,14 +1586,10 @@ class EW:
                     print("Invalid width → using default 1.5")
 
             if len(sys.argv) >= 5:
-                ref_csv = sys.argv[4]
-
-            if len(sys.argv) >= 6:
-                ref_spectrum = sys.argv[5]
+                ref_spectrum = sys.argv[4]
 
             return EW(
                 fits_file=fits_file,
-                csv_file=csv_file,
                 ref_csv=ref_csv,
                 ref_spectrum=ref_spectrum,
                 width=width
@@ -1574,13 +1601,12 @@ class EW:
         print("\n=== SpelacEW Interactive Mode ===\n")
 
         spectra = input("spectrum: ").strip()
-        lines = input("line_list (.csv): ").strip()
+        ref_csv = input("line/reference csv (.csv): ").strip()
 
-        if spectra == "" or lines == "":
-            print("ERROR: spectrum and line_list are required.")
+        if spectra == "" or ref_csv == "":
+            print("ERROR: spectrum and csv are required.")
             return None
 
-        ref_csv = input("(optional) ref EW csv: ").strip() or None
         ref_spec = input("(optional) ref spectrum: ").strip() or None
 
         width_input = input("(optional) width (default=1.5): ").strip()
@@ -1589,11 +1615,10 @@ class EW:
         print("\nLoading...\n")
 
         return EW(
-            spectra,
-            lines,
-            ref_csv,
-            ref_spec,
-            width
+            fits_file=spectra,
+            ref_csv=ref_csv,
+            ref_spectrum=ref_spec,
+            width=width
         )
 
 
