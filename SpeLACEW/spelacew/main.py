@@ -967,6 +967,7 @@ class EW:
         species = row.get("species", "")
         ep = row.get("ep", np.nan)
         gf = row.get("gf", np.nan)
+        hpf = row.get("hpf", np.nan)
 
         # --------------------------------
         # GUARDAR RESULTADOS
@@ -1003,7 +1004,7 @@ class EW:
         result["ew_star"] = EW_target
         result["FWHM"] = FWHM
         result["Chi2R"] = chi2
-        result["hpf"] = 0
+        result["hpf"] = hpf
 
         self.results.append(result)
 
