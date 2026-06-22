@@ -1,6 +1,6 @@
 [project]
 name = "spelacew"
-version = "0.1.4"
+version = "0.1.5"
 description = "Interactive spectral line fitting and Equivalent Width measurement tool"
 authors = [
     {name = "Daniel Perez"}
