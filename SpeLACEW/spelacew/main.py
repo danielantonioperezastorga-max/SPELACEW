@@ -301,15 +301,16 @@ class EW:
 
         df_sun = pd.read_csv(ref_csv)
 
-        print("Columnas disponibles:", df_sun.columns)
-
         # detectar nombre automáticamente
         if "ew_Sun" in df_sun.columns:
             ew_col = "ew_Sun"
         elif "ew" in df_sun.columns:
             ew_col = "ew"
         else:
-            raise ValueError("No se encontró columna de EW válida")
+            print("[INFO] No reference EW found. Using only line list.")
+            self.solar_EW_map = {}
+            self.solar_df = None
+            return
 
         self.solar_EW_map = dict(zip(df_sun["wavelength"], df_sun[ew_col]))
         self.solar_df = df_sun
@@ -348,7 +349,7 @@ class EW:
 
     def get_ref_line(self, wavelength, tol=0.01):
 
-        if not hasattr(self, "solar_df"):
+        if not hasattr(self, "solar_df") or self.solar_df is None:
             return None
 
         diffs = np.abs(self.solar_df["wavelength"].values - wavelength)
