@@ -864,32 +864,39 @@ class EW:
             lower, upper = [], []
 
             for mu in self.blend_centers:
-                p0 += [0.5, mu, 0.05]
-                lower += [0, mu-0.05, 0.001]
-                upper += [1.5, mu+0.05, 0.3]
+                p0 += [0.5, mu, 0.1]
+                lower += [0, mu-0.2, 0.01]
+                upper += [1.5, mu+0.2, 0.5]
 
             try:
-                popt,_ = curve_fit(self.multi_gaussian, x, y_norm, p0=p0, bounds=(lower, upper))
+                popt, _ = curve_fit(
+                    self.multi_gaussian,
+                    x,
+                    y_norm,
+                    p0=p0,
+                    bounds=(lower, upper)
+                )
             except:
                 print("Fit falló")
                 return
 
-            model = self.multi_gaussian(x,*popt)
+            model = self.multi_gaussian(x, *popt)
 
             EW_components = []
             mus = []
             sigmas = []
 
             for i in range(len(popt)//3):
+
                 A = popt[3*i]
                 mu = popt[3*i+1]
                 sigma = popt[3*i+2]
 
-                #component = self.single_gaussian_component(x, A, mu, sigma)
-                #model_i = 1 - component
-                #EW_i = np.trapz(1 - model_i, x) * 1000
-                EW_i = self.compute_area(A, sigma) * 1000
-                #EW_i = np.trapezoid(component, x) * 1000  # OK solo si estás seguro que component = absorción pura
+                # Modelo individual de esta componente
+                model_i = self.gaussian_absorption(x, A, mu, sigma)
+
+                # EW obtenido por integración numérica
+                EW_i = self.compute_EW_model(x, model_i)
 
                 EW_components.append(EW_i)
                 mus.append(mu)
@@ -907,10 +914,9 @@ class EW:
 
             FWHM = self.compute_fwhm(sigma_fit)
 
-
             text = ""
             for i in range(len(popt)//3):
-                text += f"{i+1}: λ={mus[i]:.4f}, EW={EW_components[i]:.2f}\n"
+                text += f"{i+1}: λ={mus[i]:.4f}, EW={EW_components[i]:.2f} mÅ\n"
 
             text += (
                 f"\n\nEW(target) = {EW_target:.2f} mÅ\n"
@@ -943,7 +949,7 @@ class EW:
             FWHM = self.compute_fwhm(sigma_fit)
 
             #EW_target = np.trapezoid(1 - y_norm, x) * 1000
-            EW_target = self.compute_area(A_fit, sigma_fit) * 1000
+            EW_target = self.compute_EW_model(x, model)
 
             line_center = self.line_centers[self.index]
 
