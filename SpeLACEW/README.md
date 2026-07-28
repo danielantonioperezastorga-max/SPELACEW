@@ -64,7 +64,7 @@ This makes the code particularly useful for:
 ## Clone repository
 
 ```bash
-git clone https://github.com/danielantonioperezastorga-max/spelacew.git
+git clone https://github.com/DanKuzen/spelacew.git
 cd spelacew
 ```
 
